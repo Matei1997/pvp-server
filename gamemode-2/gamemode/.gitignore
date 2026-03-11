@@ -1,0 +1,7 @@
+/frontend/node_modules
+/client_packages
+/game_resources
+npm-debug.log*
+/node_modules
+/packages
+.env

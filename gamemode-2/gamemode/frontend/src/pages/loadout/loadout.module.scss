@@ -1,0 +1,438 @@
+@import "../../styles/vars.scss";
+
+/* Loadout */
+.loadout {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 900px;
+    height: 600px;
+    max-width: 90vw;
+    max-height: 85vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #EDEDED;
+    display: flex;
+    flex-direction: column;
+    background: rgba(22, 25, 29, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    /* Tech corner clip */
+    clip-path: polygon(
+        0 0, 
+        100% 0, 
+        100% calc(100% - 32px), 
+        calc(100% - 32px) 100%, 
+        0 100%
+    );
+    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.6);
+    z-index: 100;
+    overflow: hidden;
+    backdrop-filter: blur(12px);
+
+    /* Decorative border via pseudo-element */
+    &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        pointer-events: none;
+        z-index: 101;
+    }
+}
+
+.loadoutHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.loadoutTitle {
+    font-family: $display-font;
+    font-size: 24px;
+    font-weight: 400;
+    color: #EDEDED;
+    margin: 0;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    
+    &::before {
+        content: "/// ";
+        color: #5E6AD2;
+    }
+}
+
+.catTabs {
+    display: flex;
+    gap: 4px;
+}
+
+.catTab {
+    padding: 8px 16px;
+    font-family: $display-font;
+    font-size: 16px;
+    color: #878787;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+
+    &:hover {
+        color: #EDEDED;
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    &.catTabActive {
+        color: #16191D;
+        background: #EDEDED;
+        font-weight: 700;
+        box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+    }
+}
+
+.escHint {
+    font-size: 11px;
+    color: #878787;
+    font-family: monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.loadoutGrid {
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    flex: 1;
+    min-height: 0;
+}
+
+.weaponSidebar {
+    padding: 16px;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.1);
+
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: #5E6AD2;
+    }
+}
+
+.weaponList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.weaponItem {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 2px solid transparent;
+    background: rgba(255, 255, 255, 0.02);
+    color: #878787;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    width: 100%;
+    box-sizing: border-box;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.05);
+        color: #EDEDED;
+        padding-left: 16px; /* Slide effect */
+    }
+
+    &.weaponItemActive {
+        background: rgba(94, 106, 210, 0.1);
+        color: #EDEDED;
+        border-color: rgba(94, 106, 210, 0.3);
+        border-left-color: #5E6AD2;
+    }
+}
+
+.weaponThumb {
+    width: 40px;
+    height: 24px;
+    object-fit: contain;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.weaponIcon {
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #878787;
+    flex-shrink: 0;
+}
+
+.weaponItemInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.weaponLabel {
+    font-family: $display-font;
+    font-size: 16px;
+    letter-spacing: 0.05em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.weaponCat {
+    font-size: 10px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.weaponPreview {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    background: 
+        radial-gradient(circle at center, rgba(94, 106, 210, 0.1) 0%, transparent 60%),
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 40px 40px, 40px 40px;
+    min-height: 0;
+}
+
+.previewBg {
+    display: none; 
+}
+
+.previewImg {
+    position: relative;
+    max-width: 90%;
+    max-height: 60%;
+    object-fit: contain;
+    filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.6));
+    z-index: 2;
+    transition: transform 0.3s ease;
+    
+    &:hover {
+        transform: scale(1.05) rotate(-2deg);
+    }
+}
+
+.previewSvg {
+    position: relative;
+    width: 160px;
+    height: 80px;
+    color: #2C2E33;
+}
+
+.previewLabel {
+    position: absolute;
+    bottom: 32px;
+    left: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.previewName {
+    font-family: $display-font;
+    font-size: 48px;
+    line-height: 0.9;
+    color: #EDEDED;
+    text-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.previewCat {
+    font-size: 12px;
+    color: #5E6AD2;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-weight: 700;
+}
+
+.attachments {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 24px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.2);
+
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: #5E6AD2;
+    }
+}
+
+.attSection {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.attSectionTitle {
+    font-size: 10px;
+    font-weight: 700;
+    color: #5E6AD2;
+    letter-spacing: 0.15em;
+    margin: 0;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 4px;
+}
+
+.compGrid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.compGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.catLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: #878787;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.compRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.compBtn {
+    padding: 8px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+    color: #878787;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+    flex: 1;
+    min-width: 80px;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+
+    &:hover {
+        border-color: #EDEDED;
+        color: #EDEDED;
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    &.compActive {
+        background: #EDEDED;
+        color: #16191D;
+        border-color: #EDEDED;
+        font-weight: 600;
+    }
+}
+
+.statsSection {
+    padding-top: 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.statBars {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.statRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.statLabel {
+    font-size: 11px;
+    color: #878787;
+    min-width: 80px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.statBar {
+    flex: 1;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0;
+    overflow: hidden;
+}
+
+.statFill {
+    height: 100%;
+    background: #5E6AD2;
+    box-shadow: 0 0 8px rgba(94, 106, 210, 0.5);
+    transition: width 0.25s ease;
+}
+
+.saveBtn {
+    margin-top: auto;
+    width: 100%;
+    height: 48px;
+    font-family: $display-font;
+    font-size: 20px;
+    border: none;
+    background: linear-gradient(135deg, #5E6AD2 0%, #4C58B5 100%);
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+
+    &:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(94, 106, 210, 0.4);
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background: #2C2E33;
+    }
+}

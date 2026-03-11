@@ -1,0 +1,138 @@
+@import "../../../../styles/vars.scss";
+
+.security {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.row {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.header {
+    font-family: $display-font;
+    font-size: 24px;
+    font-weight: 400;
+    letter-spacing: 0.05em;
+    color: #EDEDED;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 8px;
+    
+    &::before {
+        content: "// ";
+        color: #5E6AD2;
+    }
+}
+
+.box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .title {
+        font-family: $display-font;
+        font-size: 16px;
+        font-weight: 400;
+        color: #878787;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+}
+
+.password,
+.input {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    height: 48px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0;
+    transition: all 0.2s;
+    box-sizing: border-box;
+
+    &:focus-within {
+        border-color: #5E6AD2;
+        background: rgba(94, 106, 210, 0.05);
+        border-left-width: 4px;
+    }
+
+    input {
+        flex: 1;
+        outline: none;
+        border: none;
+        background: none;
+        font-family: inherit;
+        font-size: 14px;
+        color: #EDEDED;
+
+        &::placeholder {
+            color: #555;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.05em;
+        }
+    }
+
+    .img {
+        width: 20px;
+        height: 20px;
+        background: url(../../../../assets/images/settings/hidden.svg) no-repeat center;
+        background-size: contain;
+        cursor: pointer;
+        opacity: 0.8;
+        transition: opacity 0.2s;
+        filter: brightness(0) invert(1);
+
+        &:hover {
+            opacity: 1;
+        }
+    }
+}
+
+.input {
+    margin-top: 0;
+}
+
+.saveButton {
+    margin-top: 16px;
+    margin-bottom: 20px;
+    padding: 0 24px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: $display-font;
+    font-size: 20px;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    color: #fff;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #5E6AD2 0%, #4C58B5 100%);
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(94, 106, 210, 0.4);
+    }
+    
+    &:active {
+        transform: translateY(0);
+    }
+}
+
+.active {
+    background: url(../../../../assets/images/settings/shown.svg) no-repeat center !important;
+    background-size: contain !important;
+    filter: brightness(0) invert(1);
+}

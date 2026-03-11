@@ -1,0 +1,110 @@
+[
+  {
+    "id": "megamall",
+    "name": "Mega Mall",
+    "center": { "x": 62.0, "y": -1535.0, "z": 29.3 },
+    "redSpawn": { "x": 82.0, "y": -1535.0, "z": 29.3, "heading": 270 },
+    "blueSpawn": { "x": 42.0, "y": -1535.0, "z": 29.3, "heading": 90 },
+    "redCar": { "x": 90.0, "y": -1530.0, "z": 29.3, "heading": 270 },
+    "blueCar": { "x": 34.0, "y": -1530.0, "z": 29.3, "heading": 90 },
+    "safeNodes": [
+      { "x": 62.0, "y": -1535.0, "z": 29.3 }
+    ]
+  },
+  {
+    "id": "grove_blocks",
+    "name": "Grove Street Blocks",
+    "center": { "x": 95.0, "y": -1960.0, "z": 21.0 },
+    "redSpawn": { "x": 115.0, "y": -1960.0, "z": 21.0, "heading": 270 },
+    "blueSpawn": { "x": 75.0, "y": -1960.0, "z": 21.0, "heading": 90 },
+    "redCar": { "x": 120.0, "y": -1955.0, "z": 21.0, "heading": 270 },
+    "blueCar": { "x": 70.0, "y": -1955.0, "z": 21.0, "heading": 90 },
+    "safeNodes": [
+      { "x": 95.0, "y": -1960.0, "z": 21.0 }
+    ]
+  },
+  {
+    "id": "east_ls_industrial",
+    "name": "East LS Industrial",
+    "center": { "x": 721.0, "y": -1098.0, "z": 22.0 },
+    "redSpawn": { "x": 741.0, "y": -1098.0, "z": 22.0, "heading": 270 },
+    "blueSpawn": { "x": 701.0, "y": -1098.0, "z": 22.0, "heading": 90 },
+    "redCar": { "x": 750.0, "y": -1093.0, "z": 22.0, "heading": 270 },
+    "blueCar": { "x": 692.0, "y": -1093.0, "z": 22.0, "heading": 90 },
+    "safeNodes": [
+      { "x": 721.0, "y": -1098.0, "z": 22.0 }
+    ]
+  },
+  {
+    "id": "docks",
+    "name": "LS Docks",
+    "center": { "x": 184.0, "y": -3088.0, "z": 5.9 },
+    "redSpawn": { "x": 204.0, "y": -3088.0, "z": 5.9, "heading": 270 },
+    "blueSpawn": { "x": 164.0, "y": -3088.0, "z": 5.9, "heading": 90 },
+    "redCar": { "x": 212.0, "y": -3083.0, "z": 5.9, "heading": 270 },
+    "blueCar": { "x": 156.0, "y": -3083.0, "z": 5.9, "heading": 90 },
+    "safeNodes": [
+      { "x": 184.0, "y": -3088.0, "z": 5.9 }
+    ]
+  },
+  {
+    "id": "vinewood_hills",
+    "name": "Vinewood Hills",
+    "center": { "x": -678.0, "y": 511.0, "z": 110.0 },
+    "redSpawn": { "x": -658.0, "y": 511.0, "z": 110.0, "heading": 270 },
+    "blueSpawn": { "x": -698.0, "y": 511.0, "z": 110.0, "heading": 90 },
+    "redCar": { "x": -650.0, "y": 516.0, "z": 110.0, "heading": 270 },
+    "blueCar": { "x": -706.0, "y": 516.0, "z": 110.0, "heading": 90 },
+    "safeNodes": [
+      { "x": -678.0, "y": 511.0, "z": 110.0 }
+    ]
+  },
+  {
+    "id": "grapeseed_lake",
+    "name": "Grapeseed Lake",
+    "center": { "x": 1660.0, "y": 4874.0, "z": 42.0 },
+    "redSpawn": { "x": 1680.0, "y": 4874.0, "z": 42.0, "heading": 270 },
+    "blueSpawn": { "x": 1640.0, "y": 4874.0, "z": 42.0, "heading": 90 },
+    "redCar": { "x": 1688.0, "y": 4879.0, "z": 42.0, "heading": 270 },
+    "blueCar": { "x": 1632.0, "y": 4879.0, "z": 42.0, "heading": 90 },
+    "safeNodes": [
+      { "x": 1660.0, "y": 4874.0, "z": 42.0 }
+    ]
+  },
+  {
+    "id": "paleto",
+    "name": "Paleto Bay",
+    "center": { "x": -211.0, "y": 6225.0, "z": 31.5 },
+    "redSpawn": { "x": -191.0, "y": 6225.0, "z": 31.5, "heading": 270 },
+    "blueSpawn": { "x": -231.0, "y": 6225.0, "z": 31.5, "heading": 90 },
+    "redCar": { "x": -183.0, "y": 6230.0, "z": 31.5, "heading": 270 },
+    "blueCar": { "x": -239.0, "y": 6230.0, "z": 31.5, "heading": 90 },
+    "safeNodes": [
+      { "x": -211.0, "y": 6225.0, "z": 31.5 }
+    ]
+  },
+  {
+    "id": "chilliad_base",
+    "name": "Chiliad Base",
+    "center": { "x": 503.0, "y": 5604.0, "z": 797.0 },
+    "redSpawn": { "x": 523.0, "y": 5604.0, "z": 797.0, "heading": 270 },
+    "blueSpawn": { "x": 483.0, "y": 5604.0, "z": 797.0, "heading": 90 },
+    "redCar": { "x": 531.0, "y": 5609.0, "z": 797.0, "heading": 270 },
+    "blueCar": { "x": 475.0, "y": 5609.0, "z": 797.0, "heading": 90 },
+    "safeNodes": [
+      { "x": 503.0, "y": 5604.0, "z": 797.0 }
+    ]
+  },
+  {
+    "id": "braddock_pass",
+    "name": "Braddock Pass",
+    "center": { "x": -344.0, "y": 4403.0, "z": 50.0 },
+    "redSpawn": { "x": -324.0, "y": 4403.0, "z": 50.0, "heading": 270 },
+    "blueSpawn": { "x": -364.0, "y": 4403.0, "z": 50.0, "heading": 90 },
+    "redCar": { "x": -316.0, "y": 4408.0, "z": 50.0, "heading": 270 },
+    "blueCar": { "x": -372.0, "y": 4408.0, "z": 50.0, "heading": 90 },
+    "safeNodes": [
+      { "x": -344.0, "y": 4403.0, "z": 50.0 }
+    ]
+  }
+]

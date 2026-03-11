@@ -1,0 +1,561 @@
+@import "../../styles/vars";
+
+/* Global Lobby Container */
+.lobby {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 16, 0.65); /* Semi-transparent base */
+    color: #EDEDED;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    z-index: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(4px); /* Subtle blur for depth */
+    
+    /* Subtle grid overlay for "game" feel */
+    background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+
+    &.sceneMode {
+        background: transparent; 
+        pointer-events: none;
+        
+        * {
+            pointer-events: auto;
+        }
+    }
+}
+
+/* Floating Navigation Bar */
+.navBar {
+    position: absolute;
+    top: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 1400px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    background: rgba(22, 25, 29, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    backdrop-filter: blur(12px);
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.navLeft {
+    display: flex;
+    align-items: center;
+    gap: 48px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .logoMain {
+        font-family: $display-font;
+        font-size: 32px;
+        color: #EDEDED;
+        letter-spacing: 0.05em;
+        text-shadow: 0 0 12px rgba(94, 106, 210, 0.4);
+    }
+
+    .logoSub {
+        font-size: 11px;
+        color: #878787;
+        font-weight: 600;
+        padding-left: 12px;
+        border-left: 2px solid #5E6AD2;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+}
+
+.navLinks {
+    display: flex;
+    gap: 4px;
+}
+
+.navLink {
+    padding: 10px 20px;
+    font-family: $display-font;
+    font-size: 18px;
+    color: #878787;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+    position: relative;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+
+    &::after {
+        content: "";
+        position: absolute;
+        bottom: 6px;
+        left: 50%;
+        transform: translateX(-50%) scaleX(0);
+        width: 24px;
+        height: 2px;
+        background: #5E6AD2;
+        transition: transform 0.2s ease;
+    }
+
+    &:hover {
+        color: #EDEDED;
+        text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+    }
+
+    &.active {
+        color: #EDEDED;
+        
+        &::after {
+            transform: translateX(-50%) scaleX(1);
+        }
+    }
+}
+
+.navRight {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.playerBadge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+
+    .gems {
+        font-family: $display-font;
+        font-size: 16px;
+        color: #5E6AD2;
+    }
+
+    .playerName {
+        font-size: 14px;
+        font-weight: 600;
+        color: #EDEDED;
+    }
+}
+
+.leaveBtn {
+    font-family: $display-font;
+    font-size: 16px;
+    color: #FF5E5E;
+    background: transparent;
+    border: 1px solid rgba(255, 94, 94, 0.3);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+
+    &:hover {
+        background: rgba(255, 94, 94, 0.1);
+        border-color: #FF5E5E;
+        box-shadow: 0 0 12px rgba(255, 94, 94, 0.2);
+    }
+}
+
+.mainContent {
+    flex: 1;
+    position: relative;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Mode Tabs - Floating above Queue Card */
+.modeTabs {
+    position: absolute;
+    bottom: 420px; /* Increased to ensure clearance */
+    left: 64px;
+    display: flex;
+    gap: 24px;
+    z-index: 5;
+}
+
+.modeTab {
+    font-family: $display-font;
+    font-size: 24px;
+    color: rgba(255, 255, 255, 0.4);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0;
+
+    &:hover {
+        color: rgba(255, 255, 255, 0.8);
+        transform: translateX(4px);
+    }
+
+    &.modeTabActive {
+        color: #EDEDED;
+        font-size: 32px; /* Emphasize active mode */
+        text-shadow: 0 0 20px rgba(94, 106, 210, 0.6);
+        transform: translateX(8px);
+        
+        &::before {
+            content: "// ";
+            color: #5E6AD2;
+        }
+    }
+}
+
+/* "Tactical" Queue Card */
+.queueCard {
+    position: absolute;
+    bottom: 48px;
+    left: 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 32px;
+    background: rgba(22, 25, 29, 0.9);
+    /* Clip-path for angled corner */
+    clip-path: polygon(
+        0 0, 
+        100% 0, 
+        100% calc(100% - 24px), 
+        calc(100% - 24px) 100%, 
+        0 100%
+    );
+    border-left: 4px solid #5E6AD2;
+    width: 360px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+    
+    /* Decorative border via pseudo-element since clip-path cuts borders */
+    &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        pointer-events: none;
+        /* Match clip-path logic approximately */
+    }
+}
+
+.queueMode {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 16px;
+}
+
+.queueModeLabel {
+    font-family: $display-font;
+    font-size: 28px;
+    color: #EDEDED;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.queueModeArrows {
+    font-size: 14px;
+    color: #5E6AD2;
+    font-weight: bold;
+}
+
+.sizeRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.sizeChip {
+    flex: 1;
+    padding: 12px 0;
+    font-family: $display-font;
+    font-size: 18px;
+    color: #878787;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px; /* Slight rounding */
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+    text-transform: uppercase;
+
+    &:hover {
+        border-color: #5E6AD2;
+        color: #EDEDED;
+        background: rgba(94, 106, 210, 0.1);
+    }
+
+    &.sizeChipActive {
+        color: #16191D;
+        background: #EDEDED; /* Inverted contrast for active state */
+        border-color: #EDEDED;
+        font-weight: 700;
+        box-shadow: 0 0 16px rgba(255, 255, 255, 0.3);
+    }
+}
+
+.queueBtn {
+    width: 100%;
+    height: 64px;
+    font-family: $display-font;
+    font-size: 28px;
+    color: #fff;
+    background: linear-gradient(135deg, #5E6AD2 0%, #4C58B5 100%);
+    border: none;
+    /* Clip-path for button angle */
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    position: relative;
+    overflow: hidden;
+
+    /* Shine effect */
+    &::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+        transition: left 0.5s ease;
+    }
+
+    &:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(94, 106, 210, 0.5);
+        
+        &::before {
+            left: 100%;
+        }
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        background: #2C2E33;
+    }
+}
+
+.freeroamBtn {
+    width: 100%;
+    height: 48px;
+    font-family: $display-font;
+    font-size: 18px;
+    color: #878787;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+
+    &:hover:not(:disabled) {
+        border-color: #EDEDED;
+        color: #EDEDED;
+        background: rgba(255, 255, 255, 0.05);
+    }
+}
+
+/* Social Panel - Right Side Stack */
+.socialPanel {
+    position: absolute;
+    top: 128px; /* Below navbar */
+    right: 64px;
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.socialSection {
+    background: rgba(22, 25, 29, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    backdrop-filter: blur(8px);
+}
+
+.socialTitle {
+    font-family: $display-font;
+    font-size: 14px;
+    color: #878787;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 8px;
+}
+
+.socialName {
+    font-family: $display-font;
+    font-size: 32px;
+    color: #EDEDED;
+    line-height: 1;
+}
+
+.socialRank {
+    display: inline-block;
+    padding: 4px 8px;
+    background: rgba(94, 106, 210, 0.15);
+    color: #7C85E0;
+    font-family: $display-font;
+    font-size: 16px;
+    border-radius: 4px;
+    width: fit-content;
+    letter-spacing: 0.05em;
+}
+
+.socialBadges {
+    height: 60px;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #555;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.socialSearch {
+    position: relative;
+    
+    .searchIcon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #878787;
+        font-size: 14px;
+    }
+
+    .searchInput {
+        width: 100%;
+        height: 40px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        padding: 0 12px 0 36px;
+        font-size: 13px;
+        color: #EDEDED;
+        outline: none;
+        transition: border-color 0.15s ease;
+        box-sizing: border-box;
+
+        &:focus {
+            border-color: #5E6AD2;
+            background: rgba(0, 0, 0, 0.5);
+        }
+    }
+}
+
+.inviteSlots {
+    display: flex;
+    gap: 8px;
+}
+
+.inviteSlot {
+    flex: 1;
+    height: 64px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+        border-color: #5E6AD2;
+        background: rgba(94, 106, 210, 0.05);
+    }
+}
+
+.invitePlus {
+    font-size: 24px;
+    color: #878787;
+    line-height: 1;
+}
+
+.inviteLabel {
+    font-size: 9px;
+    color: #878787;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Info Content (Connect/Ranking) */
+.infoContent {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    
+    .infoTitle {
+        font-family: $display-font;
+        font-size: 48px;
+        color: #EDEDED;
+        margin-bottom: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .infoDesc {
+        font-size: 16px;
+        color: #878787;
+        max-width: 500px;
+        line-height: 1.6;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 24px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+}
+
+/* Error Toast */
+.errorToast {
+    position: fixed;
+    top: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 94, 94, 0.9);
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 8px 24px rgba(255, 94, 94, 0.3);
+    z-index: 100;
+    backdrop-filter: blur(8px);
+}

@@ -1,0 +1,71 @@
+.main {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
+    width: 60vh;
+
+    .content {
+        height: 27.78vh;
+        padding: 1vh 0.5vh 0;
+        overflow: auto;
+        outline: none;
+        transition: opacity 0.4s ease;
+
+        &::-webkit-scrollbar {
+            width: 0.4vh;
+        }
+        &::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 0.2vh;
+        }
+        &::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 0.2vh;
+        }
+    }
+
+    .text {
+        margin: 0 0 0.5vh 0;
+        padding: 0.3vh 0;
+
+        .timestamp {
+            margin: 0 0.3vh 0 0;
+            font-family: "Segoe UI", system-ui, sans-serif;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 1.1vh;
+        }
+
+        .message {
+            width: 95%;
+            font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+            color: #f1f5f9;
+            font-size: 1.45vh;
+            line-height: 2vh;
+            word-wrap: break-word;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+
+            :global(.chat-scope) {
+                font-weight: 700;
+                font-size: 1.1vh;
+                color: #94a3b8;
+                margin-right: 0.3vh;
+            }
+        }
+    }
+}
+
+@media (aspect-ratio: 577/540) {
+    .main {
+        transform: scale(0.7);
+        transform-origin: top left;
+    }
+}
+
+@media (aspect-ratio: 4/3),
+(aspect-ratio: 5/4) {
+    .main {
+        transform: scale(0.8);
+        transform-origin: top left;
+    }
+}

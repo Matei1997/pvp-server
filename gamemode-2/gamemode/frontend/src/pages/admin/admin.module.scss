@@ -1,0 +1,160 @@
+@import "../../styles/vars.scss";
+
+.admin {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: $glass-overlay;
+    backdrop-filter: blur(12px);
+    font-family: $global-font;
+    color: $hud-text;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 2vh;
+}
+
+.title {
+    font-size: 2.2vh;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: 0 0 0.5vh 0;
+}
+
+.subtitle {
+    font-size: 1.1vh;
+    color: $hud-text-muted;
+    margin: 0;
+}
+
+.main {
+    display: flex;
+    flex-direction: column;
+    gap: 2vh;
+    padding: 2vh;
+    background: $glass-panel;
+    border: 1px solid $glass-border;
+    border-radius: $radius-lg;
+    max-width: 50vh;
+    width: 100%;
+}
+
+.inputRow {
+    display: flex;
+    gap: 0.8vh;
+}
+
+.input {
+    flex: 1;
+    padding: 0.9vh 1.2vh;
+    font-family: $global-font;
+    font-size: 1.1vh;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid $glass-border;
+    border-radius: $radius-sm;
+    color: $hud-text;
+    outline: none;
+
+    &::placeholder {
+        color: $hud-text-muted;
+    }
+
+    &:focus {
+        border-color: rgba($accent, 0.5);
+    }
+}
+
+.execBtn {
+    padding: 0.9vh 1.5vh;
+    font-family: $global-font;
+    font-size: 1.1vh;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: rgba($accent, 0.3);
+    border: 1px solid rgba($accent, 0.5);
+    border-radius: $radius-sm;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background: rgba($accent, 0.5);
+        border-color: $accent;
+    }
+}
+
+.quickGrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1vh;
+}
+
+.quickCard {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4vh;
+    padding: 1vh;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid $glass-border;
+    border-radius: $radius-sm;
+}
+
+.quickLabel {
+    font-size: 0.95vh;
+    font-weight: 700;
+    color: $accent;
+}
+
+.quickInput {
+    padding: 0.5vh 0.8vh;
+    font-family: $global-font;
+    font-size: 0.95vh;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid $glass-border;
+    border-radius: $radius-sm;
+    color: $hud-text;
+
+    &::placeholder {
+        color: $hud-text-muted;
+    }
+}
+
+.quickBtn {
+    padding: 0.4vh 0.8vh;
+    font-family: $global-font;
+    font-size: 0.9vh;
+    font-weight: 600;
+    background: rgba($accent, 0.2);
+    border: 1px solid rgba($accent, 0.4);
+    border-radius: $radius-sm;
+    color: #fff;
+    cursor: pointer;
+    align-self: flex-start;
+
+    &:hover {
+        background: rgba($accent, 0.35);
+    }
+}
+
+.closeBtn {
+    margin-top: 2vh;
+    padding: 0.8vh 1.5vh;
+    font-family: $global-font;
+    font-size: 1vh;
+    color: $hud-text-muted;
+    background: transparent;
+    border: 1px solid $glass-border;
+    border-radius: $radius-sm;
+    cursor: pointer;
+
+    &:hover {
+        color: $hud-text;
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+}

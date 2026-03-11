@@ -1,0 +1,64 @@
+.chatinput {
+    width: 90%;
+    margin: 0.462963vh 0 0 0.2vh;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+
+    .box {
+        width: 100%;
+        padding: 0.6vh 1.2vh;
+        display: flex;
+        align-items: center;
+        gap: 0.8vh;
+
+        background: linear-gradient(135deg, rgba(20, 22, 28, 0.92) 0%, rgba(28, 30, 38, 0.88) 100%);
+        opacity: 1;
+        transition: width 0.4s ease, opacity 0.2s;
+        border-radius: 0.6vh;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+
+        img {
+            width: 2.2vh;
+            height: 2.2vh;
+            opacity: 0.85;
+            flex-shrink: 0;
+        }
+
+        .input {
+            flex: 1;
+            min-width: 0;
+            border: none;
+            outline: none;
+            background: none;
+            color: #f1f5f9;
+            font-size: 1.5vh;
+            font-family: inherit;
+
+            &::placeholder {
+                color: rgba(255, 255, 255, 0.45);
+            }
+        }
+    }
+}
+
+.chatinputDisabled {
+    .type {
+        visibility: hidden;
+        opacity: 0;
+        transition: transform .2s ease, opacity .2s ease, visibility 0s ease .2s;
+    }
+    .type {
+        transform: translateY(150%);
+    }
+    .box {
+        width: 0;
+        opacity: 0;
+        transition: width .4s ease .1s, opacity .2s .4s;
+
+        img {
+            opacity: 0;
+            width: 0;
+            transition: width .4s ease .1s, opacity .2s .4s;
+        }
+    }
+}

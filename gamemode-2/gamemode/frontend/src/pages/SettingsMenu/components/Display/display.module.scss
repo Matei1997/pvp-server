@@ -1,0 +1,106 @@
+@import "../../../../styles/vars.scss";
+
+.displaysettings {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 32px;
+    justify-content: flex-start;
+}
+
+.box {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 300px;
+    flex: 1;
+
+    .title {
+        font-family: $display-font;
+        font-size: 20px;
+        font-weight: 400;
+        letter-spacing: 0.1em;
+        color: #5E6AD2;
+        text-transform: uppercase;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 8px;
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
+
+.option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0;
+    transition: all 0.2s ease;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .title {
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        color: #EDEDED;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .buttons {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .button {
+        min-width: 64px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.02);
+        font-family: $display-font;
+        font-size: 14px;
+        font-weight: 400;
+        letter-spacing: 0.05em;
+        color: #878787;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #EDEDED;
+        }
+
+        &.active_green {
+            background: #5E6AD2;
+            border-color: #5E6AD2;
+            color: #fff;
+            box-shadow: 0 0 12px rgba(94, 106, 210, 0.4);
+        }
+
+        &.active_white {
+            background: #EDEDED;
+            border-color: #EDEDED;
+            color: #16191D;
+            font-weight: 600;
+        }
+    }
+}

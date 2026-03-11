@@ -1,0 +1,191 @@
+@import "../../styles/vars.scss";
+
+.arena {
+    position: absolute;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #0F1115;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #EDEDED;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 48px;
+    font-size: 24px;
+    font-weight: 600;
+    color: #EDEDED;
+
+    .desc {
+        font-size: 14px;
+        font-weight: 500;
+        color: #878787;
+    }
+}
+
+.players {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.playerCard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 200px;
+    height: 80px;
+    background: #16191D;
+    border: 1px solid #2C2E33;
+    border-radius: 8px;
+    transition: all 0.15s ease;
+
+    &:hover {
+        border-color: #5E6AD2;
+    }
+
+    .playerName {
+        font-size: 16px;
+        font-weight: 600;
+        color: #EDEDED;
+    }
+
+    .ready {
+        font-size: 12px;
+        font-weight: 600;
+        color: #5E6AD2;
+        margin-top: 4px;
+    }
+}
+
+.countdown {
+    font-size: 64px;
+    font-weight: 700;
+    color: #EDEDED;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 32px;
+}
+
+.timer {
+    font-size: 48px;
+    font-weight: 700;
+    color: #EDEDED;
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.leaveBtn {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 500;
+    background: transparent;
+    color: #FF5E5E;
+    border: 1px solid rgba(255, 94, 94, 0.2);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+
+    &:hover {
+        background: rgba(255, 94, 94, 0.1);
+        border-color: #FF5E5E;
+    }
+}
+
+.voteMaps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 32px;
+}
+
+.mapCard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    width: 240px;
+    height: 320px;
+    background: #16191D;
+    border: 1px solid #2C2E33;
+    border-radius: 8px;
+    padding-bottom: 24px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    overflow: hidden;
+
+    &:hover {
+        border-color: #5E6AD2;
+        transform: translateY(-2px);
+
+        .mapIcon {
+            color: rgba(94, 106, 210, 0.3);
+        }
+    }
+
+    &.mapCardSelected {
+        border-color: #5E6AD2;
+        box-shadow: 0 0 0 1px #5E6AD2;
+
+        .mapIcon {
+            color: rgba(94, 106, 210, 0.8);
+        }
+    }
+
+    .mapIcon {
+        position: absolute;
+        top: 40%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: rgba(255, 255, 255, 0.05);
+        pointer-events: none;
+        z-index: 0;
+        transition: all 0.2s ease;
+
+        svg {
+            width: 100px;
+            height: 100px;
+        }
+    }
+
+    .mapName {
+        font-size: 18px;
+        font-weight: 600;
+        color: #EDEDED;
+        z-index: 1;
+        margin-bottom: 4px;
+    }
+
+    .voteCount {
+        font-size: 13px;
+        font-weight: 500;
+        color: #878787;
+        z-index: 1;
+    }
+
+    .voteCheck {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        font-size: 16px;
+        color: #5E6AD2;
+        font-weight: bold;
+        z-index: 1;
+    }
+}

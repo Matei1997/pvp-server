@@ -1,0 +1,59 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "../../packages/server",
+        "sourceMap": false,
+        "declaration": false,
+        "alwaysStrict": true,
+        "diagnostics": true,
+        "pretty": true,
+        "allowJs": true,
+        "esModuleInterop": true,
+        "paths": {
+            "@api": [
+                "./api/index.ts"
+            ],
+            "@assets/*": [
+                "./assets/*"
+            ],
+            "@classes/*": [
+                "./classes/*"
+            ],
+            "@events/*": [
+                "./serverevents/*"
+            ],
+            "@modules/*": [
+                "./modules/*"
+            ],
+            "@entities/*": [
+                "./database/entity/*"
+            ],
+            "@arena/*": [
+                "./arena/*"
+            ],
+            "@report/*": [
+                "./report/*"
+            ],
+            "@commands/*": [
+                "./commands/*"
+            ],
+            "@prototype/*": [
+                "./prototype/*"
+            ],
+            "@shared/*": [
+                "../shared/*"
+            ]
+        }
+    },
+    "files": [
+        "../../node_modules/@ragempcommunity/types-server/index.d.ts",
+        "./@types/index.d.ts"
+    ],
+    "include": [
+        "./**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "../../../node_modules"
+    ]
+}

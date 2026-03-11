@@ -1,0 +1,60 @@
+{
+    "compilerOptions": {
+        "baseUrl": ".",
+        "lib": [
+            "dom",
+            "dom.iterable",
+            "esnext"
+        ],
+        "target": "ESNext",
+        "types": [
+            "@types/node",
+            "vite/client"
+        ],
+        "isolatedModules": false,
+        "allowJs": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "forceConsistentCasingInFileNames": true,
+        "noFallthroughCasesInSwitch": true,
+        "module": "esnext",
+        "moduleResolution": "Node",
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "sourceMap": false,
+        "resolveJsonModule": true,
+        "noEmit": true,
+        "jsx": "react-jsx",
+        "paths": {
+            "assets/*": [
+                "src/assets/*"
+            ],
+            "components/*": [
+                "src/components/*"
+            ],
+            "pages/*": [
+                "src/pages/*"
+            ],
+            "store/*": [
+                "src/stores/*"
+            ],
+            "styles/*": [
+                "src/styles/*"
+            ],
+            "utils/*": [
+                "src/utils/*"
+            ],
+            "configs/*": [
+                "src/configs/*"
+            ],
+            "shared/*": [
+                "../../source/shared/*"
+            ]
+        }
+    },
+    "include": [
+        "./src/**/*"
+    ]
+}

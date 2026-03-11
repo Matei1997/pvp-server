@@ -1,0 +1,37 @@
+$global-color: #0a0a0e;
+$global-bg: linear-gradient(180deg, rgba(48, 25, 52, 0.3) 0%, rgba(10, 10, 14, 1) 100%);
+$global-bg-reverted: linear-gradient(180deg, rgba(10, 10, 14, 1) 0%, rgba(48, 25, 52, 0.3) 100%);
+$global-bg-transparent: linear-gradient(to right, #0a0a0e, transparent);
+$global-bg-transparent-reverted: linear-gradient(to left, #0a0a0e, transparent);
+
+$global-font: "Poppins", "Inter", "Segoe UI", system-ui, sans-serif;
+$display-font: "Beast Duh", "Oswald", "Impact", sans-serif;
+
+$accent: #591b87;
+$accent-light: #7b3fa0;
+$accent-dim: rgba(89, 27, 135, 0.2);
+$accent-glow: rgba(89, 27, 135, 0.4);
+$accent-deep: #301934;
+
+$hud-card-bg: rgba(10, 10, 14, 0.9);
+$hud-accent: $accent;
+$hud-accent-dim: $accent-dim;
+$hud-border: rgba(255, 255, 255, 0.08);
+$hud-border-strong: rgba(255, 255, 255, 0.12);
+$hud-text: #fff;
+$hud-text-muted: rgba(255, 255, 255, 0.55);
+$hud-radial: radial-gradient(ellipse at center right, rgba(0, 0, 0, 0.6) 0%, transparent 70%);
+
+$card-shadow: 0 4px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+$card-shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba($accent, 0.2);
+$radius-sm: 0.5vh;
+$radius-md: 0.75vh;
+$radius-lg: 1vh;
+$glass-bg: rgba(14, 12, 22, 0.88);
+$glass-border: rgba(255, 255, 255, 0.06);
+$glass-panel: rgba(8, 6, 14, 0.92);
+$glass-overlay: rgba(0, 0, 0, 0.75);
+
+$success: #5cff80;
+$danger: #fe2a2a;
+$warning: #ffcd4d;

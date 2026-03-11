@@ -1,0 +1,7 @@
+{
+  "hats": { "maxDrawable": 165, "maxTexture": 25 },
+  "masks": { "maxDrawable": 240, "maxTexture": 25 },
+  "tops": { "maxDrawable": 400, "maxTexture": 30 },
+  "pants": { "maxDrawable": 120, "maxTexture": 25 },
+  "shoes": { "maxDrawable": 110, "maxTexture": 25 }
+}

@@ -1,0 +1,178 @@
+@import "../../styles/vars";
+
+.creator {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 16, 0.5);
+    color: #EDEDED;
+    font-family: $global-font;
+    z-index: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(4px);
+    background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+}
+
+.content {
+    position: absolute;
+    top: 50%;
+    left: 128px;
+    transform: translateY(-50%);
+    width: 400px;
+    max-height: 85vh;
+    background: rgba(22, 25, 29, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.data {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 8px;
+
+    /* Custom Scrollbar Styling */
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: rgba(94, 106, 210, 0.4);
+        border-radius: 10px;
+        transition: all 0.2s ease;
+
+        &:hover {
+            background: rgba(94, 106, 210, 0.6);
+        }
+    }
+}
+
+.navigation {
+    position: absolute;
+    top: 50%;
+    left: 32px;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 2;
+
+    .element {
+        width: 64px;
+        height: 64px;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        img {
+            width: 28px;
+            height: 28px;
+            filter: invert(0.5);
+            transition: filter 0.2s ease;
+        }
+
+        &:hover, &.active {
+            background: rgba(94, 106, 210, 0.15);
+            border-color: #5E6AD2;
+
+            img {
+                filter: invert(1);
+            }
+        }
+    }
+}
+
+.title {
+    font-family: $display-font;
+    font-size: 24px;
+    color: #EDEDED;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.buttons {
+    display: flex;
+    gap: 16px;
+    margin-top: 24px;
+
+    .create, .random {
+        flex: 1;
+        height: 56px;
+        font-family: $display-font;
+        font-size: 20px;
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .create {
+        background: linear-gradient(135deg, #5E6AD2 0%, #4C58B5 100%);
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(94, 106, 210, 0.5);
+        }
+    }
+
+    .random {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #878787;
+        border-radius: 4px;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #EDEDED;
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+    }
+}
+
+.rotate {
+    position: absolute;
+    bottom: 32px;
+    right: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #878787;
+    text-transform: uppercase;
+
+    .icon {
+        height: 24px;
+    }
+}

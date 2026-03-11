@@ -1,0 +1,99 @@
+@import "../../../../styles/vars";
+
+.container {
+    display: flex;
+    gap: 24px;
+}
+
+.navigation {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 120px;
+
+    .button {
+        width: 100%;
+        padding: 10px;
+        font-family: $display-font;
+        font-size: 14px;
+        color: #878787;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-transform: uppercase;
+        text-align: left;
+
+        &:hover {
+            border-color: #5E6AD2;
+            color: #EDEDED;
+            background: rgba(94, 106, 210, 0.1);
+        }
+
+        &.active {
+            color: #16191D;
+            background: #EDEDED;
+            border-color: #EDEDED;
+            font-weight: 700;
+        }
+    }
+}
+
+.options {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.slider {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .label {
+        font-size: 12px;
+        color: #878787;
+        text-transform: uppercase;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 4px;
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 2px;
+        outline: none;
+        transition: background 0.2s;
+
+        &::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #EDEDED;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid #5E6AD2;
+            transition: all 0.2s ease;
+
+            &:hover {
+                transform: scale(1.1);
+                box-shadow: 0 0 12px rgba(94, 106, 210, 0.5);
+            }
+        }
+
+        &::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #EDEDED;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid #5E6AD2;
+        }
+    }
+}
