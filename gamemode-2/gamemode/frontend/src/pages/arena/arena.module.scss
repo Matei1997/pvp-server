@@ -71,6 +71,41 @@
     }
 }
 
+.readyCheckActions {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.readyCheckBtn {
+    padding: 16px 48px;
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &.acceptBtn {
+        background: #5E6AD2;
+        color: #EDEDED;
+
+        &:hover {
+            background: #4a56b8;
+        }
+    }
+
+    &.declineBtn {
+        background: #2C2E33;
+        color: #EDEDED;
+        border: 1px solid #3d3f44;
+
+        &:hover {
+            background: #3d3f44;
+        }
+    }
+}
+
 .countdown {
     font-size: 64px;
     font-weight: 700;
@@ -85,6 +120,7 @@
     font-weight: 700;
     color: #EDEDED;
     text-align: center;
+    font-variant-numeric: tabular-nums;
     margin-bottom: 32px;
 }
 

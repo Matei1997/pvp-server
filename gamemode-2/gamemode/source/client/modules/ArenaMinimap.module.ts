@@ -22,7 +22,8 @@ mp.events.add("render", () => {
     mp.events.call("client::eventManager", "cef::arena:setMinimapData", {
         x: pos.x,
         y: pos.y,
-        heading
+        heading,
+        localPlayerId: player.remoteId
     });
     lastSent = now;
 });

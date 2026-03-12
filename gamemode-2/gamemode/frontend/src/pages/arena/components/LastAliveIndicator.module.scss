@@ -1,0 +1,63 @@
+@import "../../../styles/vars.scss";
+
+.lastAlive {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 140;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px 40px;
+    pointer-events: none;
+    animation: lastAliveLifecycle 3s ease-out forwards;
+}
+
+.primaryLabel {
+    font-family: $display-font;
+    font-size: clamp(1.75rem, 4.5vw, 2.75rem);
+    font-weight: 700;
+    color: #EDEDED;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.vsLabel {
+    font-family: $display-font;
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.teamRed {
+    color: #FF5E5E;
+    text-shadow: 0 0 24px rgba(255, 94, 94, 0.5);
+}
+
+.teamBlue {
+    color: #5E6AD2;
+    text-shadow: 0 0 24px rgba(94, 106, 210, 0.5);
+}
+
+@keyframes lastAliveLifecycle {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    85% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.98);
+    }
+}

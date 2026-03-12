@@ -1,10 +1,10 @@
 /**
  * Client-side recoil (kc_weapon-style): per-weapon pitch kick applied over frames.
- * Recoil = camera moves UP (add to relative pitch). Skip when scoped (view mode 4).
- * Server attachment modifier applied via client::recoil:setModifier.
+ * Recoil = camera moves UP (add to relative pitch).
+ * Skip pitch when: scoped (view mode 4) OR ADS (isAimActive) — prevents camera pulling upward / crosshair snap bug.
+ * Camera shake still applied when ADS for feedback.
+ * Server attachment modifier applied via client::recoil:setModifiers (per-weapon map).
  */
-
-import { Browser } from "@classes/Browser.class";
 
 const UNARMED_HASH = 2725352035;
 
@@ -67,17 +67,26 @@ const PITCH_SMOOTHING = 0.6;
 /** Optional camera shake on shot (0 = off). */
 const SHAKE_INTENSITY = 0.04;
 
-let recoilModifier = 1.0;
-let lastAmmo = 0;
-let lastWeapon = 0;
+/** Per-weapon recoil modifier from attachments (weaponHash -> modifier). Default 1.0 if not in map. */
+let recoilModifiers: Record<number, number> = {};
+let recoilLastAmmo = 0;
+let recoilLastWeapon = 0;
 let pendingPitch = 0;
 
-mp.events.add("client::recoil:setModifier", (modifier: number) => {
-    recoilModifier = modifier;
+mp.events.add("client::recoil:setModifiers", (json: string) => {
+    try {
+        const parsed = JSON.parse(json) as Record<string, number>;
+        recoilModifiers = {};
+        for (const [k, v] of Object.entries(parsed)) {
+            recoilModifiers[Number(k)] = v;
+        }
+    } catch {
+        recoilModifiers = {};
+    }
 });
 
 mp.events.add("client::recoil:reset", () => {
-    recoilModifier = 1.0;
+    recoilModifiers = {};
 });
 
 mp.events.add("render", () => {
@@ -85,12 +94,11 @@ mp.events.add("render", () => {
     if (!player || !mp.players.exists(player)) return;
     if (player.getHealth() <= 0) return;
     if (player.vehicle) return;
-    if (Browser.currentPage === "arena_hud") return; // Optional: disable in hopouts if it still feels off
 
     const weapon = player.weapon;
     if (weapon === UNARMED_HASH) {
-        lastWeapon = weapon;
-        lastAmmo = 0;
+        recoilLastWeapon = weapon;
+        recoilLastAmmo = 0;
         pendingPitch = 0;
         return;
     }
@@ -98,28 +106,30 @@ mp.events.add("render", () => {
     const ammo = player.getAmmoInClip(weapon);
     const cam = mp.game.cam;
 
-    if (weapon !== lastWeapon) {
-        lastWeapon = weapon;
-        lastAmmo = ammo;
+    if (weapon !== recoilLastWeapon) {
+        recoilLastWeapon = weapon;
+        recoilLastAmmo = ammo;
         pendingPitch = 0;
         return;
     }
 
-    // Shot detected: add recoil (pitch UP = positive)
-    if (ammo < lastAmmo && lastAmmo > 0) {
+    // Shot detected: add recoil (pitch UP = positive). Skip pitch when ADS to avoid camera/aim conflict.
+    const modifier = recoilModifiers[weapon] ?? 1.0;
+    const isAiming = typeof cam.isAimActive === "function" && cam.isAimActive();
+    if (ammo < recoilLastAmmo && recoilLastAmmo > 0) {
         const recoilVal = WEAPON_RECOIL[weapon] ?? DEFAULT_RECOIL;
         if (recoilVal > 0) {
-            pendingPitch += recoilVal * recoilModifier;
+            if (!isAiming) pendingPitch += recoilVal * modifier;
             if (SHAKE_INTENSITY > 0 && typeof cam.shakeGameplay === "function") {
                 cam.shakeGameplay("SMALL_EXPLOSION_SHAKE", SHAKE_INTENSITY * recoilVal);
             }
         }
     }
 
-    // Apply pending recoil over frames (kc_weapon: add pitch each frame until done)
+    // Apply pending recoil over frames. Skip when scoped or ADS — prevents upward pull / crosshair snap.
     if (pendingPitch > 0 && typeof cam.getGameplayRelativePitch === "function" && typeof cam.setGameplayRelativePitch === "function") {
         const viewMode = typeof cam.getFollowPedViewMode === "function" ? cam.getFollowPedViewMode() : 0;
-        if (viewMode !== VIEW_MODE_FIRST_PERSON_SCOPE) {
+        if (viewMode !== VIEW_MODE_FIRST_PERSON_SCOPE && !isAiming) {
             const step = Math.min(pendingPitch, RECOIL_STEP);
             const current = cam.getGameplayRelativePitch();
             cam.setGameplayRelativePitch(current + step, PITCH_SMOOTHING);
@@ -129,5 +139,5 @@ mp.events.add("render", () => {
         }
     }
 
-    lastAmmo = ammo;
+    recoilLastAmmo = ammo;
 });

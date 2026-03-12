@@ -4,6 +4,7 @@ import EventManager from "utils/EventManager.util";
 const defaultData = {
     sex: 0,
     name: { firstname: "", lastname: "" },
+    username: "",
     parents: { father: 0, mother: 21, leatherMix: 0, similarity: 0 },
     hair: { head: 0, eyebrows: 0, chest: 0, beard: 0 },
     face: {
@@ -67,14 +68,19 @@ class _CreatorStore {
     }
 
     resetData() {
-        this.data = defaultData;
+        this.data = observable.object({ ...defaultData });
         this.lastFather = 0;
         this.lastMother = 0;
+    }
+
+    setUsername(username: string) {
+        this.data.username = username;
     }
 
     public createEvents() {
         EventManager.addHandler("creator", "resetData", () => this.resetData());
         EventManager.addHandler("creator", "setData", (data: typeof this.data) => this.fetchData(data));
+        EventManager.addHandler("creator", "setUsername", (data: { username: string }) => this.setUsername(data.username));
         EventManager.stopAddingHandler("creator");
     }
 }

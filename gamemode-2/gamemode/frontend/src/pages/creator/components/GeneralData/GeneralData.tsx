@@ -109,25 +109,14 @@ const CreatorPlayerName: FC<{ store: typeof creatorStore }> = ({ store }) => {
         mothersList.findIndex((p) => p.id === store.data.parents.mother)
     );
 
+    const username = (store.data as any).username ?? "";
+
     return (
         <div className={style.section}>
             <div className={style.inputRow}>
-                <input
-                    className={style.nameInput}
-                    type="text"
-                    placeholder="Firstname"
-                    maxLength={13}
-                    onChange={(e) => (store.data.name.firstname = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase())}
-                    value={store.data.name.firstname}
-                />
-                <input
-                    className={style.nameInput}
-                    type="text"
-                    placeholder="Lastname"
-                    maxLength={13}
-                    onChange={(e) => (store.data.name.lastname = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1).toLowerCase())}
-                    value={store.data.name.lastname}
-                />
+                <div className={style.nameDisplay}>
+                    {username ? `Display name: ${username}` : "Your username will be used as your display name"}
+                </div>
             </div>
 
             <div className={style.genderButtons}>

@@ -16,9 +16,19 @@ import "@events/Wardrobe.event";
 import "@events/MainMenu.event";
 import "@events/PlayerMenu.event";
 import "@events/Admin.event";
+import { startSnapshotRecording } from "@modules/combat/SnapshotManager";
+import { ensureDefaultSeason } from "@modules/seasons/SeasonManager";
 import "@arena/ArenaMatch.manager";
 import "@events/Arena.event";
+import "@events/Party.event";
 import "@events/Report.event";
+import "@events/Leaderboard.event";
+import "@events/Profile.event";
+import "@events/Challenge.event";
+import "@events/Ffa.event";
+import "@events/GunGame.event";
+import "@events/Season.event";
+import "@events/Progression.event";
 
 mp.events.add("server::client:debug", (_, message: string, ...args: any) => {
     if (!process.env.DEBUG_MODE) return;
@@ -32,6 +42,8 @@ mp.events.add("server::client:debug", (_, message: string, ...args: any) => {
         .then(() => console.log(`${green("[DONE]")} Database connected!`))
         .catch((err) => console.error(`${red("[ERROR]")} Database connection error:`, err));
 
+    startSnapshotRecording();
+    ensureDefaultSeason();
     console.log(`${green("[DONE]")} Server Events: ${Object.values(mp.events.binded).length}`);
     console.log(`${green("[DONE]")} Cef Events: ${RAGERP.cef.poolSize}`);
     console.log(`${green("[DONE]")} Total Commands: ${RAGERP.commands._commands.size}`);

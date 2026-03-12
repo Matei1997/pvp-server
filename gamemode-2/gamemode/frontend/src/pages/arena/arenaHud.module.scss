@@ -72,19 +72,18 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Compass */
+/* Compass - bottom center */
 .compass {
     position: absolute;
-    top: 32px;
+    bottom: 24px;
     left: 50%;
     transform: translateX(-50%);
     width: 400px;
-    height: 32px;
+    height: 28px;
     overflow: hidden;
-    /* Tech style */
-    background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.6) 20%, rgba(0, 0, 0, 0.6) 80%, transparent);
-    border-top: 1px solid rgba(255, 255, 255, 0.2);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -127,32 +126,28 @@
     filter: drop-shadow(0 0 4px #5E6AD2);
 }
 
-/* Top Center Score */
+/* Top Center - ScoreBar only */
 .topCenter {
     position: absolute;
-    top: 80px;
+    top: 24px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    z-index: 10;
 }
 
 .scores {
     display: flex;
     align-items: center;
-    gap: 0; /* Connected look */
-    background: rgba(0, 0, 0, 0.4);
-    clip-path: polygon(
-        0 0, 
-        100% 0, 
-        calc(100% - 16px) 100%, 
-        16px 100%
-    );
-    padding: 0 24px;
-    height: 48px;
-    border-top: 2px solid rgba(255, 255, 255, 0.1);
+    gap: 0;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 0 28px;
+    height: 52px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .teamBadge {
@@ -186,26 +181,38 @@
 
 .timer {
     font-family: monospace;
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     color: #EDEDED;
-    background: rgba(0, 0, 0, 0.6);
-    padding: 4px 12px;
-    margin: 0 12px;
-    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 6px 14px;
+    margin: 0 14px;
+    border-radius: 4px;
     border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Top Left - ZoneInfo, TeamVitals */
+.topLeft {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 /* Zone Info */
 .zoneInfo {
-    margin-top: 8px;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 6px 16px;
-    background: rgba(0, 0, 0, 0.6);
-    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
-    border-bottom: 2px solid #FFB74D;
+    padding: 10px 18px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 184, 77, 0.4);
+    border-left: 3px solid #FFB74D;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .zonePhase {
@@ -223,38 +230,40 @@
     font-weight: 700;
 }
 
-/* Top Right Area */
+/* Top Right - KillFeed only */
 .topRight {
     position: absolute;
-    top: 32px;
-    right: 32px;
+    top: 24px;
+    right: 24px;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 24px;
+    z-index: 10;
 }
 
 /* Kill Feed */
 .killFeed {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     align-items: flex-end;
 }
 
 .killEntry {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.6));
-    border-right: 2px solid rgba(255, 255, 255, 0.1);
+    gap: 10px;
+    padding: 8px 14px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 13px;
     color: #EDEDED;
     font-family: $display-font;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     animation: slideIn 0.2s ease-out;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 @keyframes slideIn {
@@ -273,17 +282,29 @@
 }
 
 .weaponIcon {
-    height: 14px;
+    height: 18px;
+    width: 18px;
+    object-fit: contain;
     filter: invert(1);
     opacity: 0.8;
+}
+
+.headshotMarker {
+    font-size: 10px;
+    font-weight: 700;
+    color: #FFB74D;
+    background: rgba(255, 183, 77, 0.2);
+    padding: 2px 4px;
+    border-radius: 2px;
+    letter-spacing: 0.02em;
 }
 
 /* Scoreboard */
 .scoreboardOverlay {
     position: fixed;
     inset: 0;
-    background: rgba(10, 12, 16, 0.8);
-    backdrop-filter: blur(4px);
+    background: rgba(10, 12, 16, 0.75);
+    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -291,121 +312,321 @@
 }
 
 .scoreboardPanel {
-    background: rgba(22, 25, 29, 0.9);
+    background: rgba(18, 20, 26, 0.92);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    width: 800px;
+    border-radius: 8px;
+    width: 720px;
+    max-width: 90vw;
     padding: 0;
     display: flex;
     flex-direction: column;
-    /* Tech styling */
-    clip-path: polygon(
-        0 0, 
-        100% 0, 
-        100% calc(100% - 24px), 
-        calc(100% - 24px) 100%, 
-        0 100%
-    );
-    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.5);
-    
-    &::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        pointer-events: none;
-        z-index: 101;
-    }
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
 }
 
 .scoreboardTitle {
-    background: rgba(0, 0, 0, 0.4);
-    padding: 16px;
+    padding: 18px 24px;
     font-family: $display-font;
-    font-size: 24px;
-    font-weight: 400;
+    font-size: 20px;
+    font-weight: 600;
     color: #EDEDED;
     text-align: center;
-    letter-spacing: 0.2em;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .scoreboardScores {
     display: flex;
     justify-content: center;
-    gap: 64px;
-    padding: 24px;
-    background: rgba(0, 0, 0, 0.2);
+    align-items: center;
+    gap: 24px;
+    padding: 24px 24px 16px;
+}
+
+.sbScoreRed, .sbScoreBlue {
+    min-width: 64px;
+    text-align: center;
 }
 
 .sbBigScore {
     font-family: $display-font;
-    font-size: 48px;
+    font-size: 44px;
+    font-weight: 700;
     line-height: 1;
 }
 
-.sbRed { color: #FF5E5E; text-shadow: 0 0 16px rgba(255, 94, 94, 0.4); }
-.sbBlue { color: #5E6AD2; text-shadow: 0 0 16px rgba(94, 106, 210, 0.4); }
+.sbScoreRed .sbBigScore {
+    color: #FF5E5E;
+    text-shadow: 0 0 12px rgba(255, 94, 94, 0.35);
+}
 
-.sbTimer { 
+.sbScoreBlue .sbBigScore {
+    color: #5E6AD2;
+    text-shadow: 0 0 12px rgba(94, 106, 210, 0.35);
+}
+
+.sbScoreDivider {
+    font-size: 28px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.sbRoundBadge {
+    text-align: center;
     font-family: monospace;
-    font-size: 24px; 
-    color: #EDEDED; 
-    font-weight: 700;
-    background: rgba(0, 0, 0, 0.4);
-    padding: 4px 16px;
-    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 4px 0 20px;
 }
 
 .scoreboardTeams {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 2px; /* Divider line */
-    background: rgba(255, 255, 255, 0.1); /* Divider color */
-    padding: 24px;
+    gap: 24px;
+    padding: 0 24px 24px;
 }
 
 .sbTeamCol {
-    background: rgba(22, 25, 29, 0.9); /* Inner background */
-    padding: 0 16px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sbTeamCol:first-child {
+    border-left: 3px solid #FF5E5E;
+}
+
+.sbTeamCol:last-child {
+    border-left: 3px solid #5E6AD2;
 }
 
 .sbTeamHeader {
     font-family: $display-font;
-    font-size: 14px;
-    color: #878787;
-    margin-bottom: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sbPlayerList {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .sbRow {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.02);
-    border-left: 2px solid transparent;
-    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
     font-size: 14px;
     color: #EDEDED;
-    transition: all 0.2s;
+    transition: all 0.15s;
 
-    &.self {
-        background: rgba(255, 255, 255, 0.08);
-        border-left-color: #EDEDED;
+    &.sbRowSelf {
+        background: rgba(255, 255, 255, 0.1);
+        border-left: 3px solid rgba(255, 255, 255, 0.9);
+        padding-left: 9px;
     }
 
-    &.dead {
-        opacity: 0.4;
-        filter: grayscale(1);
+    &.sbRowDead {
+        opacity: 0.45;
+        filter: grayscale(0.8);
     }
 }
 
-.sbKills, .sbDeaths {
+.sbPlayerName {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sbKd {
     font-family: monospace;
     font-weight: 600;
-    width: 32px;
-    text-align: right;
-    color: #878787;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-left: 12px;
+}
+
+/* Round Scoreboard (Hopouts only - shown after each round) */
+.roundScoreboardOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 12, 16, 0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 140;
+    animation: roundScoreboardFadeIn 0.3s ease-out;
+}
+
+@keyframes roundScoreboardFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.roundScoreboardPanel {
+    background: rgba(18, 20, 26, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    width: 720px;
+    max-width: 90vw;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+
+.roundScoreboardTitle {
+    padding: 18px 24px;
+    font-family: $display-font;
+    font-size: 18px;
+    font-weight: 600;
+    color: #EDEDED;
+    text-align: center;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.roundScoreboardScores {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    padding: 20px 24px 12px;
+}
+
+.rsbScoreRed, .rsbScoreBlue {
+    min-width: 64px;
+    text-align: center;
+}
+
+.rsbBigScore {
+    font-family: $display-font;
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.rsbScoreRed .rsbBigScore {
+    color: #FF5E5E;
+    text-shadow: 0 0 12px rgba(255, 94, 94, 0.35);
+}
+
+.rsbScoreBlue .rsbBigScore {
+    color: #5E6AD2;
+    text-shadow: 0 0 12px rgba(94, 106, 210, 0.35);
+}
+
+.rsbScoreDivider {
+    font-size: 24px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.rsbRoundBadge {
+    text-align: center;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    padding: 4px 0 16px;
+}
+
+.roundScoreboardTeams {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    padding: 0 24px 24px;
+}
+
+.rsbTeamCol {
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.rsbTeamCol:first-child {
+    border-left: 3px solid #FF5E5E;
+}
+
+.rsbTeamCol:last-child {
+    border-left: 3px solid #5E6AD2;
+}
+
+.rsbTeamHeader {
+    font-family: $display-font;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.rsbPlayerList {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rsbRow {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+    font-size: 14px;
+    color: #EDEDED;
+
+    &.rsbRowSelf {
+        background: rgba(255, 255, 255, 0.1);
+        border-left: 3px solid rgba(255, 255, 255, 0.9);
+        padding-left: 9px;
+    }
+}
+
+.rsbPlayerName {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rsbStats {
+    display: flex;
+    gap: 16px;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.rsbKd {
+    min-width: 48px;
+}
+
+.rsbDmg {
+    min-width: 36px;
+}
+
+.rsbHs {
+    min-width: 32px;
 }
 
 /* Match Results */
@@ -434,15 +655,322 @@
     &.defeat { color: #FF5E5E; text-shadow: 0 0 32px rgba(255, 94, 94, 0.6); }
 }
 
-/* Item Bar (Bottom) */
-.itemBar {
-    position: absolute;
-    bottom: 48px;
-    right: 48px; /* Move to right for better visibility */
-    left: auto;
-    transform: none;
+.resultsScores {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.resultsTeams {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+}
+
+.teamScore {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+
+    .score {
+        font-family: $display-font;
+        font-size: 48px;
+        font-weight: 400;
+        color: #EDEDED;
+    }
+}
+
+.teamLabel {
+    font-family: $display-font;
+    font-size: 14px;
+    color: #878787;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.vs {
+    font-family: $display-font;
+    font-size: 24px;
+    color: #878787;
+}
+
+.teamList {
+    min-width: 200px;
+}
+
+.teamHeader {
+    font-family: $display-font;
+    font-size: 14px;
+    color: #878787;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.playerRow {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    margin-bottom: 4px;
+    font-size: 14px;
+    color: #EDEDED;
+}
+
+.kd {
+    font-family: monospace;
+    font-weight: 600;
+    color: #878787;
+}
+
+/* MVP section - match end */
+.mvpSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+    padding: 12px 24px;
+    background: rgba(255, 183, 77, 0.15);
+    border: 1px solid rgba(255, 183, 77, 0.4);
+    border-radius: 6px;
+}
+
+.mvpLabel {
+    font-family: $display-font;
+    font-size: 12px;
+    font-weight: 700;
+    color: #FFB74D;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+}
+
+.mvpName {
+    font-family: $display-font;
+    font-size: 18px;
+    font-weight: 600;
+    color: #EDEDED;
+}
+
+.mvpKills {
+    font-family: monospace;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* MMR / Rank section - match end */
+.mmrSection {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+}
+
+.rankTier {
+    font-family: $display-font;
+    font-size: 14px;
+    font-weight: 600;
+    color: #B0BEC5;
+}
+
+.mmrChange {
+    font-family: monospace;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.xpGained {
+    font-size: 14px;
+    color: #81C784;
+}
+
+.levelUp {
+    font-size: 14px;
+    font-weight: 600;
+    color: #FFB74D;
+}
+
+/* Round overlay */
+.roundOverlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 150;
+    text-align: center;
+    padding: 24px 48px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.roundTitle {
+    font-family: $display-font;
+    font-size: 32px;
+    font-weight: 700;
+    color: #EDEDED;
+    margin-bottom: 8px;
+    letter-spacing: 0.1em;
+}
+
+.roundWeapon {
+    font-family: $display-font;
+    font-size: 18px;
+    color: #878787;
+    margin-bottom: 8px;
+}
+
+.roundScore {
+    font-family: monospace;
+    font-size: 20px;
+    color: #EDEDED;
+}
+
+/* Center kill/death notification */
+.centerNotification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.killNotif, .deathNotif {
+    text-align: center;
+    padding: 14px 28px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.killLabel, .deathLabel {
+    display: block;
+    font-family: $display-font;
+    font-size: 12px;
+    color: #878787;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+}
+
+.killName {
+    font-family: $display-font;
+    font-size: 20px;
+    color: #FF5E5E;
+}
+
+.deathName {
+    font-family: $display-font;
+    font-size: 20px;
+    color: #5E6AD2;
+}
+
+/* Floating damage numbers - hit position overlay */
+.damageNumber {
+    position: fixed;
+    transform: translate(-50%, -50%);
+    font-family: $display-font;
+    font-size: 28px;
+    font-weight: 700;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+    pointer-events: none;
+    z-index: 60;
+    animation: damageNumberFloat 0.7s ease-out forwards;
+}
+
+@keyframes damageNumberFloat {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.2);
+    }
+    20% {
+        transform: translate(-50%, -60%) scale(1.1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -80%) scale(1);
+    }
+}
+
+/* Spectating label - bottom center */
+.spectatingLabel {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: $display-font;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 16px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    z-index: 50;
+}
+
+.spectatingHint {
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.05em;
+    margin-left: 4px;
+}
+
+/* Out of bounds */
+.outOfBounds {
+    position: fixed;
+    bottom: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 28px;
+    background: rgba(255, 0, 0, 0.35);
+    border: 2px solid #FF5E5E;
+    border-radius: 6px;
+    font-family: $display-font;
+    font-size: 15px;
+    font-weight: 600;
+    color: #EDEDED;
+    z-index: 50;
+    box-shadow: 0 4px 16px rgba(255, 94, 94, 0.2);
+}
+
+/* Bottom Right - ItemBar + Weapon stack */
+.bottomRight {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 16px;
+    z-index: 10;
+}
+
+.bottomRightStack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+}
+
+.bottomRightStack .itemBar {
+    position: static;
+}
+
+/* Item Bar */
+.itemBar {
+    display: flex;
+    gap: 10px;
 }
 
 .itemBtn {
@@ -450,36 +978,28 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: 72px;
-    height: 72px;
-    background: rgba(0, 0, 0, 0.6);
+    width: 64px;
+    height: 64px;
+    background: rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    /* Hex/Tech shape */
-    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+    border-radius: 6px;
     color: #EDEDED;
     cursor: pointer;
-    transition: all 0.1s ease;
+    transition: all 0.15s ease;
     position: relative;
-
-    &::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        pointer-events: none;
-        clip-path: inherit;
-    }
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 
     &:hover:not(.itemDisabled) {
         border-color: #5E6AD2;
-        background: rgba(94, 106, 210, 0.2);
-        transform: translateY(-4px);
+        background: rgba(94, 106, 210, 0.25);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(94, 106, 210, 0.2);
     }
     
     &.activeItem {
-        background: rgba(94, 106, 210, 0.2);
+        background: rgba(94, 106, 210, 0.25);
         border-color: #5E6AD2;
-        box-shadow: 0 0 16px rgba(94, 106, 210, 0.3);
+        box-shadow: 0 0 12px rgba(94, 106, 210, 0.3);
     }
 }
 
@@ -492,6 +1012,11 @@
     color: #878787;
 }
 
+.itemIcon {
+    font-size: 24px;
+    line-height: 1;
+}
+
 .itemCount {
     position: absolute;
     bottom: 4px;
@@ -502,32 +1027,26 @@
     color: #EDEDED;
 }
 
-/* Bottom Right Speedometer */
-.bottomRight {
-    position: absolute;
-    bottom: 150px;
-    right: 48px;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-}
-
 .speedoWrapper {
-    margin-bottom: 0; /* Reset margin, moved lower */
+    margin-top: 4px;
 }
 
 .weaponInfo {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 4px;
-    padding: 0;
+    gap: 6px;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 
     img {
-        width: 140px;
-        height: 70px;
+        width: 120px;
+        height: 60px;
         object-fit: contain;
-        filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6));
+        filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
     }
 
     .ammodata {
@@ -535,10 +1054,11 @@
         align-items: baseline;
         gap: 8px;
         font-family: $display-font;
-        font-size: 56px;
-        line-height: 0.8;
+        font-size: 48px;
+        font-weight: 600;
+        line-height: 0.9;
         color: #EDEDED;
-        text-shadow: 0 4px 12px rgba(0,0,0,0.8);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 
         img {
             display: none;
@@ -546,28 +1066,27 @@
     }
 }
 
-/* Forge-style progress (medkit / plate cast) */
+/* Cast progress (medkit / plate) - center bottom overlay */
 .progressWrapper {
     position: absolute;
-    bottom: 48px;
+    bottom: 80px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-bottom: 0;
     z-index: 50;
 }
 
 .progressBox {
-    width: min(22vw, 320px);
-    background: rgba(27, 27, 27, 0.66);
+    width: min(24vw, 340px);
+    background: rgba(0, 0, 0, 0.6);
     border-radius: 8px;
     display: flex;
     flex-direction: column;
-    padding: 10px 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    padding: 12px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 .progressRow {

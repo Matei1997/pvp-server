@@ -53,9 +53,13 @@ export namespace CefData {
                 playError: { message: string };
                 setPlayerData: { name: string };
                 setArenaMaps: { maps: { id: string; name: string }[] };
+                setAdminLevel: { adminLevel: number };
             };
             loadout: {
                 presetsLoaded: { presets: { weaponName: string; components: number[] }[] };
+            };
+            creator: {
+                setUsername: { username: string };
             };
             tuner: {
                 setData: { vehicleId: number; mods: Record<number, number> };
@@ -123,6 +127,13 @@ export namespace CefData {
                     round: number;
                     roundsToWin: number;
                 };
+                roundResult: {
+                    winnerTeam: "red" | "blue" | "draw";
+                    winningPlayerId?: number;
+                    winningPlayerName?: string;
+                    clutch?: boolean;
+                    remainingEnemies?: number;
+                };
                 zoneUpdate: {
                     centerX: number;
                     centerY: number;
@@ -132,15 +143,38 @@ export namespace CefData {
                     phaseTimeLeft: number;
                     dps: number;
                 };
+                aliveCount: { redAlive: number; blueAlive: number };
                 itemCounts: { medkits: number; plates: number };
                 itemCastStart: { item: "medkit" | "plate"; castTime: number };
                 itemCastComplete: { item: "medkit" | "plate" };
                 itemCastCancel: {};
                 setVitals: { health: number; armor: number };
+                damageDirection: { direction: "left" | "right" | "front" | "behind" };
+                lastAlive: { playerId: number; playerName: string; team: "red" | "blue"; enemiesRemaining: number };
+                startSpectate: { teammates: { playerId: number; playerName: string }[] };
                 outOfBounds: { active: boolean; timeLeft: number };
-                killFeed: { killer: string; victim: string };
+                killFeed: {
+                    killerId: number;
+                    killerName: string;
+                    victimId: number;
+                    victimName: string;
+                    weaponHash: string;
+                    weaponName: string;
+                    headshot?: boolean;
+                };
                 youKill: { victim: string };
                 youDied: { killer: string };
+                deathRecap: {
+                    killerId: number;
+                    killerName: string;
+                    weaponHash: string;
+                    weaponName?: string;
+                    totalDamage: number;
+                    hits: number;
+                    headshots: number;
+                    headshot?: boolean;
+                    victimDamageToKiller: number;
+                };
                 leftMatch: null;
                 matchEnd: {
                     redScore: number;
@@ -148,7 +182,16 @@ export namespace CefData {
                     redTeam: { id: number; name: string; kills: number; deaths: number }[];
                     blueTeam: { id: number; name: string; kills: number; deaths: number }[];
                     winner: "red" | "blue" | "draw";
+                    oldMMR?: number;
+                    newMMR?: number;
+                    rankTier?: string;
+                    xpGained?: number;
+                    leveledUp?: boolean;
+                    newLevel?: number;
                 };
+            };
+            match: {
+                readyCheck: { mapName?: string; timeLeft?: number };
             };
         }
         export interface IncomingCEFEvents {
@@ -195,8 +238,15 @@ export namespace CefData {
 
             mainmenu: {
                 playFreeroam: (player: PlayerMp) => void;
-                playArena: (player: PlayerMp, data?: StringifiedObject<{ size?: number; map?: string; mode?: string }>) => void;
+                playArena: (player: PlayerMp, data?: StringifiedObject<{ size?: number; map?: string; mode?: string; asParty?: boolean }>) => void;
                 getArenaMaps: (player: PlayerMp) => void;
+                requestPlayerList: (player: PlayerMp) => void;
+                requestAdminLevel: (player: PlayerMp) => void;
+            };
+
+            match: {
+                acceptReady: (player: PlayerMp) => void;
+                declineReady: (player: PlayerMp) => void;
             };
 
             arena: {

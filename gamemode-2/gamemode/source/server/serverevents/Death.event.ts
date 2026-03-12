@@ -2,6 +2,8 @@ import { hospitalSpawns } from "@assets/PlayerSpawn.asset";
 import { RageShared } from "@shared/index";
 import { Utils } from "@shared/utils.module";
 import { isPlayerInArenaMatch, handleArenaDeath } from "@arena/ArenaMatch.manager";
+import { isPlayerInFfaMatch, handleFfaDeath } from "@modes/ffa/FfaMatch.manager";
+import { isPlayerInGunGameMatch, handleGunGameDeath } from "@modes/gungame/GunGameMatch.manager";
 import { logKill } from "../admin/AdminLog.manager";
 
 const LEGION_SQUARE = { x: 213.0, y: -810.0, z: 30.73, heading: 160.0 };
@@ -26,6 +28,16 @@ function respawnFreeroamAtLegionSquare(player: PlayerMp) {
 function playerDeath(player: PlayerMp, _reason: number, killer: PlayerMp | undefined) {
     if (!player || !mp.players.exists(player) || !player.character) return;
 
+    const inFfa = isPlayerInFfaMatch(player);
+    if (inFfa && handleFfaDeath(player, killer)) {
+        logKill({ killer, victim: player, reason: _reason ?? null, inArena: true });
+        return;
+    }
+    const inGunGame = isPlayerInGunGameMatch(player);
+    if (inGunGame && handleGunGameDeath(player, killer)) {
+        logKill({ killer, victim: player, reason: _reason ?? null, inArena: true });
+        return;
+    }
     const inArena = isPlayerInArenaMatch(player);
     if (inArena && handleArenaDeath(player, killer)) {
         logKill({ killer, victim: player, reason: _reason ?? null, inArena: true });

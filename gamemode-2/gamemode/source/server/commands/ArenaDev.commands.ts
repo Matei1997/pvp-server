@@ -3,7 +3,7 @@ import * as path from "path";
 import { RAGERP } from "@api";
 import { RageShared } from "@shared/index";
 import { getArenaPresets, saveArenaPreset } from "@arena/ArenaPresets.asset";
-import { IArenaPreset } from "@arena/ArenaPreset.interface";
+import { IArenaPreset } from "@shared/interfaces/ArenaPreset.interface";
 import { startSoloMatch } from "@arena/Arena.module";
 
 type ArenaMarkType = "center" | "redspawn" | "bluespawn" | "redcar" | "bluecar" | "safenode";
@@ -257,6 +257,24 @@ RAGERP.commands.add({
 
 mp.events.add("startEditAttachServer", () => {
     attachEditorEditing = true;
+});
+
+RAGERP.commands.add({
+    name: "generateSeasonRewards",
+    aliases: ["genrewards"],
+    description: "Generate season-end rewards for a season: /generateSeasonRewards <seasonId>",
+    adminlevel: ADMIN_DEV,
+    run: async (player: PlayerMp, _fulltext: string, seasonId: string) => {
+        if (!seasonId) return RAGERP.chat.sendSyntaxError(player, "/generateSeasonRewards <seasonId>");
+        try {
+            const { generateSeasonRewards } = await import("@modules/seasons/SeasonRewardsManager");
+            const count = await generateSeasonRewards(seasonId);
+            player.showNotify(RageShared.Enums.NotifyType.TYPE_SUCCESS, `Generated ${count} rewards for ${seasonId}`);
+        } catch (err) {
+            console.error("[SeasonRewards] generateSeasonRewards failed:", err);
+            player.showNotify(RageShared.Enums.NotifyType.TYPE_ERROR, "Failed to generate rewards.");
+        }
+    }
 });
 
 mp.events.add("finishAttach", (player: PlayerMp, objectJson: string) => {

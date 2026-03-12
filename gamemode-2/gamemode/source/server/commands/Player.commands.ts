@@ -51,6 +51,27 @@ RAGERP.commands.add({
 });
 
 RAGERP.commands.add({
+    name: "setradio",
+    description: "Set radio channel (3-4 digits). Only used outside Hopouts matches.",
+    run: (player: PlayerMp, _fulltext: string, channelStr: string) => {
+        if (!channelStr || !channelStr.trim()) {
+            const current = (player.getVariable("radioChannel") as number) ?? 1000;
+            return player.showNotify(RageShared.Enums.NotifyType.TYPE_INFO, `Current radio channel: ${current}. Use /setradio [3-4 digit number]`);
+        }
+        const s = channelStr.trim();
+        if (s.length < 3 || s.length > 4) {
+            return player.showNotify(RageShared.Enums.NotifyType.TYPE_ERROR, "Channel must be 3 or 4 digits.");
+        }
+        const num = parseInt(s, 10);
+        if (isNaN(num) || num < 100 || num > 9999) {
+            return player.showNotify(RageShared.Enums.NotifyType.TYPE_ERROR, "Channel must be 100-9999.");
+        }
+        player.setVariable("radioChannel", num);
+        player.showNotify(RageShared.Enums.NotifyType.TYPE_SUCCESS, `Radio channel set to ${num}.`);
+    }
+});
+
+RAGERP.commands.add({
     name: "shout",
     aliases: ["s"],
     description: "Shoutout a message",

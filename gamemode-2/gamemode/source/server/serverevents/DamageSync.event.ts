@@ -1,6 +1,34 @@
 import { Utils } from "@shared/utils.module";
+import { getRewindPosition } from "@modules/combat/SnapshotManager";
+import {
+    validateFireRate,
+    validateDuplicateHit,
+    validateDistance,
+    recordKill,
+    logSuspiciousShortInterval,
+    getTimeSinceLastShot
+} from "@modules/combat/CombatIntegrity";
+import { RAGERP } from "@api";
 import { getMatchByPlayer, getTeam, handleArenaDeath } from "@arena/ArenaMatch.manager";
+import { getFfaMatchByPlayer, handleFfaDeath } from "@modes/ffa/FfaMatch.manager";
+import { getGunGameMatchByPlayer, handleGunGameDeath } from "@modes/gungame/GunGameMatch.manager";
 import { logDamageHit } from "../admin/AdminLog.manager";
+import { recordDamageToVictim, recordDamageDealt } from "@modules/combat/DeathRecapTracker";
+
+type DamageDirection = "left" | "right" | "front" | "behind";
+
+function getDamageDirection(victim: PlayerMp, shooter: PlayerMp): DamageDirection {
+    const dx = shooter.position.x - victim.position.x;
+    const dy = shooter.position.y - victim.position.y;
+    const angleToShooter = (Math.atan2(dx, dy) * 180) / Math.PI;
+    const victimHeading = victim.heading;
+    let relative = ((angleToShooter - victimHeading) % 360 + 360) % 360;
+    if (relative > 180) relative -= 360;
+    if (relative >= -45 && relative <= 45) return "front";
+    if (relative > 45 && relative < 135) return "right";
+    if (relative >= 135 || relative <= -135) return "behind";
+    return "left";
+}
 
 const DEFAULT_BONE_MULT = 1;
 const DEFAULT_WEAPON_BASE = 28;
@@ -86,29 +114,57 @@ mp.events.add("server:PlayerHit", (shooter: PlayerMp, victimId: number, targetBo
     if (!victim || !mp.players.exists(victim)) return;
     if (shooter.id === victim.id) return;
 
-    // Arena: no team damage
-    const match = getMatchByPlayer(victim);
-    if (match) {
-        const victimTeam = getTeam(match, victim.id);
-        const shooterTeam = getTeam(match, shooter.id);
-        if (victimTeam && shooterTeam && victimTeam === shooterTeam) return;
-        // Must be in same dimension
+    const timeSinceLastShot = getTimeSinceLastShot(shooter.id);
+
+    // Combat integrity: fire rate validation
+    const fireRateResult = validateFireRate(shooter.id, weaponHash);
+    if (!fireRateResult.allowed) return;
+
+    // Combat integrity: duplicate hit guard
+    const duplicateResult = validateDuplicateHit(shooter.id, victim.id);
+    if (!duplicateResult.allowed) return;
+
+    // FFA / Gun Game: no teams, everyone can damage everyone
+    const ffaMatch = getFfaMatchByPlayer(victim);
+    const gunGameMatch = getGunGameMatchByPlayer(victim);
+    if (ffaMatch || gunGameMatch) {
         if (shooter.dimension !== victim.dimension) return;
+    } else {
+        // Arena (Hopouts): no team damage
+        const match = getMatchByPlayer(victim);
+        if (match) {
+            const victimTeam = getTeam(match, victim.id);
+            const shooterTeam = getTeam(match, shooter.id);
+            if (victimTeam && shooterTeam && victimTeam === shooterTeam) return;
+            if (shooter.dimension !== victim.dimension) return;
+        }
     }
 
-    const distance = Utils.distanceToPos(shooter.position, victim.position);
+    const shotTime = Date.now() - (shooter.ping / 2);
+    const rewindVictimPos = getRewindPosition(victim.id, shotTime);
+    const victimPosForDistance = rewindVictimPos ?? victim.position;
+    const distance = Utils.distanceToPos(shooter.position, victimPosForDistance);
+
+    // Combat integrity: distance sanity check
+    const distanceResult = validateDistance(weaponHash, distance);
+    if (!distanceResult.allowed) return;
     const isHead = targetBone === "Head";
+    const hitStatus = isHead ? 3 : victim.armour > 0 ? 2 : 1; // 1=health, 2=armour, 3=head (before damage)
+    const hitStatusStr = isHead ? "headshot" : victim.armour > 0 ? "armor" : "health";
     const weaponDmg = getWeaponDamage(weaponHash, Math.max(1, distance));
     const boneMult = getBoneMultiplier(targetBone); // Head = 1.5x, no one-shot head
     const finalDamage = Math.round(weaponDmg * boneMult * 10) / 10;
 
-    // Arena (Hopouts): apply damage on server; per-weapon cap so .50 etc. kill in fewer shots than weaker guns
-    if (match && match.state === "active") {
+    let damageToShow = finalDamage;
+    const hopoutsMatch = !ffaMatch ? getMatchByPlayer(victim) : null;
+    // FFA: apply damage (same as arena), on death handleFfaDeath
+    if (ffaMatch && ffaMatch.state === "active") {
         const w = weaponDamage[weaponHash] ?? { base: DEFAULT_WEAPON_BASE, min: DEFAULT_WEAPON_MIN };
-        const cap = Math.min(ARENA_CAP_MAX, ARENA_CAP_BASE + w.base * 0.5);
-        let dmgLeft = Math.round(finalDamage * ARENA_DAMAGE_MULT * 10) / 10;
+        const cap = Math.min(25, 8 + w.base * 0.5);
+        let dmgLeft = Math.round(finalDamage * 0.75 * 10) / 10;
         if (dmgLeft <= 0) dmgLeft = 1;
         dmgLeft = Math.min(dmgLeft, cap);
+        damageToShow = dmgLeft;
         const effectiveHp = Math.max(0, ((victim.getVariable("arenaEffectiveHp") as number) ?? 100) - dmgLeft);
         victim.setVariable("arenaEffectiveHp", effectiveHp);
         if (victim.armour > 0) {
@@ -120,8 +176,67 @@ mp.events.add("server:PlayerHit", (shooter: PlayerMp, victimId: number, targetBo
             victim.health = Math.max(0, victim.health - dmgLeft);
         }
         if (effectiveHp <= 0) {
+            recordKill(shooter.id, shooter.name, victim.name, isHead);
+            handleFfaDeath(victim, shooter);
+        }
+        recordDamageToVictim(victim.id, shooter.id, weaponHash, dmgLeft, targetBone);
+        recordDamageDealt(shooter.id, victim.id, dmgLeft);
+        logSuspiciousShortInterval(shooter.id, shooter.name, victim.name, timeSinceLastShot);
+        victim.call("client::player:setVitals", [victim.health, victim.armour]);
+        RAGERP.cef.emit(victim, "arena", "damageDirection", { direction: getDamageDirection(victim, shooter) });
+    } else if (gunGameMatch && gunGameMatch.state === "active") {
+        const w = weaponDamage[weaponHash] ?? { base: DEFAULT_WEAPON_BASE, min: DEFAULT_WEAPON_MIN };
+        const cap = Math.min(25, 8 + w.base * 0.5);
+        let dmgLeft = Math.round(finalDamage * 0.75 * 10) / 10;
+        if (dmgLeft <= 0) dmgLeft = 1;
+        dmgLeft = Math.min(dmgLeft, cap);
+        damageToShow = dmgLeft;
+        const effectiveHp = Math.max(0, ((victim.getVariable("arenaEffectiveHp") as number) ?? 100) - dmgLeft);
+        victim.setVariable("arenaEffectiveHp", effectiveHp);
+        if (victim.armour > 0) {
+            const toArmour = Math.min(victim.armour, dmgLeft);
+            victim.armour = Math.max(0, victim.armour - toArmour);
+            dmgLeft -= toArmour;
+        }
+        if (dmgLeft > 0) {
+            victim.health = Math.max(0, victim.health - dmgLeft);
+        }
+        if (effectiveHp <= 0) {
+            recordKill(shooter.id, shooter.name, victim.name, isHead);
+            handleGunGameDeath(victim, shooter);
+        }
+        recordDamageToVictim(victim.id, shooter.id, weaponHash, dmgLeft, targetBone);
+        recordDamageDealt(shooter.id, victim.id, dmgLeft);
+        logSuspiciousShortInterval(shooter.id, shooter.name, victim.name, timeSinceLastShot);
+        victim.call("client::player:setVitals", [victim.health, victim.armour]);
+        RAGERP.cef.emit(victim, "arena", "damageDirection", { direction: getDamageDirection(victim, shooter) });
+    } else if (hopoutsMatch && hopoutsMatch.state === "active") {
+        const w = weaponDamage[weaponHash] ?? { base: DEFAULT_WEAPON_BASE, min: DEFAULT_WEAPON_MIN };
+        const cap = Math.min(ARENA_CAP_MAX, ARENA_CAP_BASE + w.base * 0.5);
+        let dmgLeft = Math.round(finalDamage * ARENA_DAMAGE_MULT * 10) / 10;
+        if (dmgLeft <= 0) dmgLeft = 1;
+        dmgLeft = Math.min(dmgLeft, cap);
+        const damageThisHit = dmgLeft;
+        damageToShow = damageThisHit;
+        const effectiveHp = Math.max(0, ((victim.getVariable("arenaEffectiveHp") as number) ?? 100) - dmgLeft);
+        victim.setVariable("arenaEffectiveHp", effectiveHp);
+        if (victim.armour > 0) {
+            const toArmour = Math.min(victim.armour, dmgLeft);
+            victim.armour = Math.max(0, victim.armour - toArmour);
+            dmgLeft -= toArmour;
+        }
+        if (dmgLeft > 0) {
+            victim.health = Math.max(0, victim.health - dmgLeft);
+        }
+        if (effectiveHp <= 0) {
+            recordKill(shooter.id, shooter.name, victim.name, isHead);
             handleArenaDeath(victim, shooter);
         }
+        recordDamageToVictim(victim.id, shooter.id, weaponHash, damageThisHit, targetBone);
+        recordDamageDealt(shooter.id, victim.id, damageThisHit);
+        logSuspiciousShortInterval(shooter.id, shooter.name, victim.name, timeSinceLastShot);
+        victim.call("client::player:setVitals", [victim.health, victim.armour]);
+        RAGERP.cef.emit(victim, "arena", "damageDirection", { direction: getDamageDirection(victim, shooter) });
     } else {
         // Freeroam: apply damage on server so it actually registers (server-authoritative)
         let dmgLeft = finalDamage;
@@ -133,7 +248,10 @@ mp.events.add("server:PlayerHit", (shooter: PlayerMp, victimId: number, targetBo
         if (dmgLeft > 0) {
             victim.health = Math.max(0, victim.health - dmgLeft);
         }
-        // Push server-authoritative vitals to victim's client so HP/AP UI updates (engine may not sync immediately)
+        if (victim.health <= 0) {
+            recordKill(shooter.id, shooter.name, victim.name, isHead);
+        }
+        logSuspiciousShortInterval(shooter.id, shooter.name, victim.name, timeSinceLastShot);
         victim.call("client::player:setVitals", [victim.health, victim.armour]);
     }
 
@@ -143,9 +261,8 @@ mp.events.add("server:PlayerHit", (shooter: PlayerMp, victimId: number, targetBo
         weaponHash,
         damage: finalDamage,
         distance,
-        inArena: !!match
+        inArena: !!ffaMatch || !!gunGameMatch || !!hopoutsMatch
     });
 
-    const hitStatus = isHead ? 3 : victim.armour > 0 ? 2 : 1; // 1=health, 2=armour, 3=head
-    shooter.call("client:ShowHitmarker", [finalDamage, victim.position.x, victim.position.y, victim.position.z, hitStatus]);
+    shooter.call("client:ShowHitmarker", [damageToShow, victim.position.x, victim.position.y, victim.position.z, hitStatus, hitStatusStr]);
 });

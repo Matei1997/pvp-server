@@ -9,10 +9,7 @@ import CreatorPlayerClothes from "./components/Clothing/Clothing";
 
 import { setRandomOptions } from "./utils/Randomizer.module";
 
-import { regExp } from "utils/Helpers.util";
-
 import EventManager from "utils/EventManager.util";
-import Notification from "utils/NotifyManager.util";
 
 import infoicon from "assets/images/creator/icons/info.svg";
 import hairstyleicon from "assets/images/creator/icons/hairstyle.svg";
@@ -32,26 +29,20 @@ const Creator: React.FC<{ store: typeof creatorStore }> = observer(({ store }) =
     }, [optionsPage]);
 
     const handleCreate = React.useCallback(() => {
-        if (store.data.name.firstname && store.data.name.lastname) {
-            const { firstname, lastname } = store.data.name;
-            if (regExp.nickname.test(firstname) || regExp.nickname.test(lastname)) return Notification.error("Character name must contain only latin letters.");
-            if (firstname.length < 3 || firstname.length > 12 || lastname.length < 3 || lastname.length > 12) return Notification.error("Character name must be between 4 and 24 characters");
-
-            EventManager.emitServer("creator", "create", {
-                sex: store.data.sex,
-                name: store.data.name,
-                parents: store.data.parents,
-                hair: store.data.hair,
-                face: store.data.face,
-                color: store.data.color,
-                clothes: store.data.clothes
-            });
-        }
+        EventManager.emitServer("creator", "create", {
+            sex: store.data.sex,
+            name: store.data.name,
+            parents: store.data.parents,
+            hair: store.data.hair,
+            face: store.data.face,
+            color: store.data.color,
+            clothes: store.data.clothes
+        });
     }, [store.data]);
 
     const getPageTitle = () => {
         switch (optionsPage) {
-            case "name": return "SELECT GENDER AND NAME";
+            case "name": return "SELECT GENDER";
             case "appearance": return "Appearance";
             case "face": return "Face Features";
             case "clothes": return "Clothing";

@@ -23,7 +23,7 @@ export async function applyWeaponPresets(player: PlayerMp, weaponHashes: number[
     if (!player.character) return;
 
     const presets = await loadPlayerPresets(player.character.id);
-    let combinedRecoil = 1.0;
+    const recoilByWeapon: Record<string, number> = {};
 
     for (const hash of weaponHashes) {
         const attachData = getWeaponAttachments(hash);
@@ -38,11 +38,11 @@ export async function applyWeaponPresets(player: PlayerMp, weaponHashes: number[
 
         player.call("client::weapon:applyComponents", [hash, JSON.stringify(validComponents)]);
 
-        const weaponRecoil = calculateRecoilModifier(hash, validComponents);
-        combinedRecoil *= weaponRecoil;
+        const modifier = calculateRecoilModifier(hash, validComponents);
+        recoilByWeapon[String(hash)] = modifier;
     }
 
-    player.call("client::recoil:setModifier", [combinedRecoil]);
+    player.call("client::recoil:setModifiers", [JSON.stringify(recoilByWeapon)]);
 }
 
 RAGERP.cef.register("loadout", "getPresets", async (player: PlayerMp) => {

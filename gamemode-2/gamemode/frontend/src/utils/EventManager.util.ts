@@ -57,7 +57,7 @@ class _EventManager {
      */
     public callHandler(event: string, ...args: any[]): void {
         const [target, name] = event.split(":");
-        const matchedEvent = this.eventsInMemory.find((event) => event.target === target && event.name === name);
+        const matchedEvent = this.eventsInMemory.find((e) => e.target === target && e.name === name);
         if (matchedEvent) {
             matchedEvent.handler(...args);
             if (isDev) {

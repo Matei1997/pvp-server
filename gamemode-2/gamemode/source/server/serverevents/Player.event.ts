@@ -2,7 +2,15 @@ import { RAGERP } from "@api";
 import { BanEntity } from "@entities/Ban.entity";
 import { CharacterEntity } from "@entities/Character.entity";
 import { entityAttachments } from "@modules/Attachments.module";
-import { isPlayerInArenaMatch, leaveMatch } from "@arena/ArenaMatch.manager";
+import { isPlayerInArenaMatch, leaveMatch, handleMatchDisconnect } from "@arena/ArenaMatch.manager";
+import { onPlayerDisconnectFromQueue } from "@arena/Arena.module";
+import { onPlayerDisconnectFromFfaQueue } from "@modes/ffa/Ffa.module";
+import { isPlayerInFfaMatch, leaveFfaMatch } from "@modes/ffa/FfaMatch.manager";
+import { onPlayerDisconnectFromGunGameQueue } from "@modes/gungame/GunGame.module";
+import { isPlayerInGunGameMatch, leaveGunGameMatch } from "@modes/gungame/GunGameMatch.manager";
+import { onPlayerDisconnect } from "@modules/party/PartyManager";
+import { clearPlayerSnapshots } from "@modules/combat/SnapshotManager";
+import { clearPlayerCombatTracking } from "@modules/combat/CombatIntegrity";
 
 const LEGION_SQUARE = { x: 213.0, y: -810.0, z: 30.73, heading: 160.0 };
 
@@ -34,9 +42,21 @@ async function onPlayerJoin(player: PlayerMp) {
     }
 }
 async function onPlayerQuit(player: PlayerMp) {
+    clearPlayerSnapshots(player.id);
+    clearPlayerCombatTracking(player.id);
     if (isPlayerInArenaMatch(player)) {
-        leaveMatch(player);
+        handleMatchDisconnect(player);
     }
+    if (isPlayerInFfaMatch(player)) {
+        leaveFfaMatch(player);
+    }
+    if (isPlayerInGunGameMatch(player)) {
+        leaveGunGameMatch(player);
+    }
+    onPlayerDisconnectFromGunGameQueue(player.id);
+    onPlayerDisconnectFromFfaQueue(player.id);
+    onPlayerDisconnectFromQueue(player.id);
+    onPlayerDisconnect(player.id);
 
     const character = player.character;
     if (!character) return;
@@ -72,7 +92,6 @@ export function startSpectate(spectator: PlayerMp, target: PlayerMp): void {
     if (spectator.id === target.id) return;
     if (spectator.getVariable("isSpectating")) {
         stopSpectate(spectator);
-        return;
     }
     spectator.lastPosition = new mp.Vector3(spectator.position.x, spectator.position.y, spectator.position.z);
     spectator.position = new mp.Vector3(target.position.x, target.position.y, target.position.z - 15);

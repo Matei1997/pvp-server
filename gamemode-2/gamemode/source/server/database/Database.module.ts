@@ -11,6 +11,11 @@ import * as dotenv from "dotenv";
 import { VehicleEntity } from "./entity/Vehicle.entity";
 import { BankAccountEntity } from "@entities/Bank.entity";
 import { WeaponPresetEntity } from "./entity/WeaponPreset.entity";
+import { PlayerStatsEntity } from "@modules/stats/PlayerStats.entity";
+import { PlayerMatchHistoryEntity } from "@modules/stats/PlayerMatchHistory.entity";
+import { PlayerChallengeProgressEntity } from "@modules/stats/PlayerChallengeProgress.entity";
+import { PlayerSeasonStatsEntity } from "@modules/seasons/PlayerSeasonStats.entity";
+import { PlayerSeasonRewardEntity } from "@modules/seasons/PlayerSeasonReward.entity";
 
 dotenv.config();
 
@@ -49,7 +54,7 @@ export const MainDataSource = new DataSource({
     synchronize: true,
     connectTimeoutMS: config.connectTimeout,
     logging: ["error"],
-    entities: [AccountEntity, CharacterEntity, BankAccountEntity, BanEntity, VehicleEntity, WeaponPresetEntity],
+    entities: [AccountEntity, CharacterEntity, BankAccountEntity, BanEntity, VehicleEntity, WeaponPresetEntity, PlayerStatsEntity, PlayerMatchHistoryEntity, PlayerChallengeProgressEntity, PlayerSeasonStatsEntity, PlayerSeasonRewardEntity],
     migrations: [],
     subscribers: [],
     logger: DatabaseLogger.getInstance(loggerConfig)

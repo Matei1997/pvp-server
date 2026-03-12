@@ -4,7 +4,7 @@ import { entries } from "mobx";
 
 import { hudStore } from "store/Hud.store";
 import { playerStore } from "store/Player.store";
-
+import { VoiceIndicator } from "components/VoiceIndicator";
 import Speedometer from "./components/Speedometer";
 
 import star from "assets/images/hud/icons/star.svg";
@@ -115,12 +115,7 @@ const MainHUD: FC<{ store: typeof hudStore; playerStore: typeof playerStore }> =
                 {store.vehicleData.isActive && <Speedometer store={store} />}
             </div>
 
-            {(store.voiceTransmitting.local || store.voiceTransmitting.radio) && (
-                <div className={style.voiceIndicator} aria-label="Voice transmitting">
-                    {store.voiceTransmitting.local && <span className={`${style.voiceIcon} ${style.voiceIconLocal}`} />}
-                    {store.voiceTransmitting.radio && <span className={`${style.voiceIcon} ${style.voiceIconRadio}`} />}
-                </div>
-            )}
+            <VoiceIndicator />
         </div>
     );
 };

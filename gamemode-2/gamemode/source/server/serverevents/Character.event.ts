@@ -1,8 +1,11 @@
 import { RAGERP } from "@api";
 import { CharacterEntity } from "@entities/Character.entity";
 import { RageShared } from "@shared/index";
+import { tryReconnect } from "@modules/matches/ReconnectManager";
+import { restoreReconnectingPlayer } from "@arena/ArenaMatch.manager";
 
-export async function spawnWithCharacter(player: PlayerMp, character: CharacterEntity) {
+/** Returns true if player was reconnected to a match (caller should skip mainmenu flow). */
+export async function spawnWithCharacter(player: PlayerMp, character: CharacterEntity): Promise<boolean> {
     player.character = character;
     player.setVariable("loggedin", true);
     player.call("client::auth:destroyCamera");
@@ -11,7 +14,16 @@ export async function spawnWithCharacter(player: PlayerMp, character: CharacterE
     player.model = character.gender === 0 ? mp.joaat("mp_m_freemode_01") : mp.joaat("mp_f_freemode_01");
     player.name = character.name;
     await character.spawn(player);
+
+    const reconnectSlot = tryReconnect(player);
+    if (reconnectSlot) {
+        restoreReconnectingPlayer(player, reconnectSlot);
+        player.showNotify(RageShared.Enums.NotifyType.TYPE_SUCCESS, "Reconnected to match!");
+        return true;
+    }
+
     player.showNotify(RageShared.Enums.NotifyType.TYPE_SUCCESS, `Welcome, ${character.name}!`);
+    return false;
 }
 
 /**
@@ -34,7 +46,11 @@ RAGERP.cef.register("character", "select", async (player: PlayerMp, data: string
     const character = await RAGERP.database.getRepository(CharacterEntity).findOne({ where: { id }, relations: ["bank"] });
     if (!character) return player.showNotify(RageShared.Enums.NotifyType.TYPE_ERROR, "An error occurred selecting your character.");
 
-    await spawnWithCharacter(player, character);
+    const reconnected = await spawnWithCharacter(player, character);
+    if (!reconnected) {
+        RAGERP.cef.startPage(player, "mainmenu");
+        RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+    }
 });
 /**
  * Executes when a player choose to create a new character
@@ -44,6 +60,7 @@ RAGERP.cef.register("character", "create", async (player: PlayerMp) => {
 
     player.call("client::creator:start");
     RAGERP.cef.emit(player, "system", "setPage", "creator");
+    if (player.account) RAGERP.cef.emit(player, "creator", "setUsername", { username: player.account.username });
 });
 /**
  * Executes when a player finishes creating a character.
@@ -52,10 +69,7 @@ RAGERP.cef.register("creator", "create", async (player, data) => {
     if (!player.account) return player.kick("An error has occurred!");
 
     const parseData = RAGERP.utils.parseObject(data);
-    const fullname = `${parseData.name.firstname} ${parseData.name.lastname}`;
-
-    const nameisTaken = await RAGERP.database.getRepository(CharacterEntity).findOne({ where: { name: fullname } });
-    if (nameisTaken) return player.showNotify(RageShared.Enums.NotifyType.TYPE_ERROR, "We're sorry but that name is already taken, choose another one.");
+    const fullname = player.account.username;
     const { sex, parents, hair, face, color, clothes: creatorClothes }: RageShared.Players.Interfaces.CreatorData = parseData;
 
     const characterLimit = await RAGERP.database.getRepository(CharacterEntity).find({ where: { account: { id: player.account.id } }, take: 1 });

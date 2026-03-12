@@ -40,6 +40,7 @@ RAGERP.cef.register("auth", "register", async (player, data) => {
     player.call("client::auth:destroyCamera");
     player.call("client::creator:start");
     RAGERP.cef.emit(player, "system", "setPage", "creator");
+    RAGERP.cef.emit(player, "creator", "setUsername", { username: player.account.username });
 });
 
 RAGERP.cef.register("auth", "loginPlayer", async (player, data) => {
@@ -60,13 +61,16 @@ RAGERP.cef.register("auth", "loginPlayer", async (player, data) => {
     });
 
     if (characters.length > 0) {
-        await spawnWithCharacter(player, characters[0]);
-        RAGERP.cef.startPage(player, "mainmenu");
-        RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
-        RAGERP.cef.emit(player, "mainmenu", "setPlayerData", { name: characters[0].name });
+        const reconnected = await spawnWithCharacter(player, characters[0]);
+        if (!reconnected) {
+            RAGERP.cef.startPage(player, "mainmenu");
+            RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+            RAGERP.cef.emit(player, "mainmenu", "setPlayerData", { name: characters[0].name });
+        }
     } else {
         player.call("client::auth:destroyCamera");
         player.call("client::creator:start");
         RAGERP.cef.emit(player, "system", "setPage", "creator");
+        RAGERP.cef.emit(player, "creator", "setUsername", { username: player.account.username });
     }
 });

@@ -31,6 +31,9 @@
             "@arena/*": [
                 "./arena/*"
             ],
+            "@modes/*": [
+                "./modes/*"
+            ],
             "@report/*": [
                 "./report/*"
             ],

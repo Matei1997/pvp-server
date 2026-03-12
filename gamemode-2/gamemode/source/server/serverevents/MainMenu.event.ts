@@ -1,8 +1,13 @@
 import { RAGERP } from "@api";
 import { RageShared } from "@shared/index";
-import { joinQueue } from "@arena/Arena.module";
+import { joinQueue, joinQueueWithParty } from "@arena/Arena.module";
+import { getPartyByPlayer, isLeader } from "@modules/party/PartyManager";
 import { getArenaPresets } from "@arena/ArenaPresets.asset";
 import { isPlayerInArenaMatch, leaveMatch } from "@arena/ArenaMatch.manager";
+import { isPlayerInFfaMatch, leaveFfaMatch } from "@modes/ffa/FfaMatch.manager";
+import { joinFfaQueue } from "@modes/ffa/Ffa.module";
+import { isPlayerInGunGameMatch, leaveGunGameMatch } from "@modes/gungame/GunGameMatch.manager";
+import { joinGunGameQueue } from "@modes/gungame/GunGame.module";
 import { CharacterEntity } from "@entities/Character.entity";
 import { QUEUE_SIZES, QueueSize } from "@arena/ArenaConfig";
 
@@ -44,6 +49,16 @@ RAGERP.cef.register("mainmenu", "openSettings", (player: PlayerMp) => {
     RAGERP.cef.emit(player, "system", "setPage", "settings");
 });
 
+RAGERP.cef.register("mainmenu", "requestAdminLevel", (player: PlayerMp) => {
+    const level = player?.account?.adminlevel ?? 0;
+    RAGERP.cef.emit(player, "mainmenu", "setAdminLevel", { adminLevel: level });
+});
+
+RAGERP.cef.register("mainmenu", "requestPlayerList", (player: PlayerMp) => {
+    const players = mp.players.toArray().map((p) => ({ id: p.id, name: p.name, ping: p.ping }));
+    RAGERP.cef.emit(player, "playerList", "setPlayers", players);
+});
+
 RAGERP.cef.register("mainmenu", "getArenaMaps", (player: PlayerMp) => {
     const presets = getArenaPresets();
     (RAGERP.cef.emit as Function)(player, "mainmenu", "setArenaMaps", {
@@ -57,22 +72,47 @@ RAGERP.cef.register("mainmenu", "playArena", async (player: PlayerMp, data?: str
         return;
     }
 
+    let mode = "hopouts";
     let size: QueueSize = 1;
     let mapId: string | undefined;
+    let asParty = false;
     try {
         const parsed = data ? (typeof data === "string" ? JSON.parse(data) : data) : null;
-        if (parsed && typeof parsed === "object" && parsed.size !== undefined) {
-            const s = Number(parsed.size);
-            if ((QUEUE_SIZES as readonly number[]).includes(s)) size = s as QueueSize;
-        }
-        if (parsed && typeof parsed === "object" && parsed.map) {
-            mapId = String(parsed.map);
+        if (parsed && typeof parsed === "object") {
+            if (parsed.mode === "ffa") mode = "ffa";
+            if (parsed.mode === "gungame") mode = "gungame";
+            if (parsed.size !== undefined) {
+                const s = Number(parsed.size);
+                if ((QUEUE_SIZES as readonly number[]).includes(s)) size = s as QueueSize;
+            }
+            if (parsed.map) mapId = String(parsed.map);
+            if (parsed.asParty === true) asParty = true;
         }
     } catch {
         /* default */
     }
 
-    if (joinQueue(player, size, mapId)) {
+    if (mode === "ffa") {
+        const ok = joinFfaQueue(player);
+        if (!ok) {
+            RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Could not join FFA queue. You may already be in it." });
+        }
+        return;
+    }
+
+    if (mode === "gungame") {
+        const ok = joinGunGameQueue(player);
+        if (!ok) {
+            RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Could not join Gun Game queue. You may already be in it." });
+        }
+        return;
+    }
+
+    const party = getPartyByPlayer(player);
+    const usePartyQueue = asParty && party && isLeader(player);
+    const ok = usePartyQueue ? joinQueueWithParty(player, size, mapId) : joinQueue(player, size, mapId);
+
+    if (ok) {
         RAGERP.cef.startPage(player, "arena_lobby");
         RAGERP.cef.emit(player, "system", "setPage", "arena_lobby");
     } else {

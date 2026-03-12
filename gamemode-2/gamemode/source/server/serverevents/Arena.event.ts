@@ -1,16 +1,23 @@
 import { RAGERP } from "@api";
 import { RageShared } from "@shared/index";
-import { joinQueue, leaveQueue, vote } from "@arena/Arena.module";
-import { leaveMatch, getMatchByPlayer, isAliveInMatch } from "@arena/ArenaMatch.manager";
+import { joinQueue, joinQueueWithParty, leaveQueue, vote, acceptReadyCheck, declineReadyCheck } from "@arena/Arena.module";
+import { leaveMatch, getMatchByPlayer, isAliveInMatch, getSpectatableTeammates } from "@arena/ArenaMatch.manager";
+import { startSpectate } from "@events/Player.event";
 import { QUEUE_SIZES, QueueSize, ITEM_CONFIG } from "@arena/ArenaConfig";
 
 RAGERP.cef.register("arena", "joinQueue", async (player: PlayerMp, data: string) => {
     let size: QueueSize = 1;
+    let asParty = false;
+    let preferredMapId: string | undefined;
     try {
         const parsed = typeof data === "string" ? JSON.parse(data) : data;
-        if (parsed && typeof parsed === "object" && parsed.size !== undefined) {
-            const s = Number(parsed.size);
-            if ((QUEUE_SIZES as readonly number[]).includes(s)) size = s as QueueSize;
+        if (parsed && typeof parsed === "object") {
+            if (parsed.size !== undefined) {
+                const s = Number(parsed.size);
+                if ((QUEUE_SIZES as readonly number[]).includes(s)) size = s as QueueSize;
+            }
+            if (parsed.asParty === true) asParty = true;
+            if (typeof parsed.preferredMapId === "string") preferredMapId = parsed.preferredMapId;
         } else if (typeof parsed === "number") {
             if ((QUEUE_SIZES as readonly number[]).includes(parsed)) size = parsed as QueueSize;
         }
@@ -18,7 +25,8 @@ RAGERP.cef.register("arena", "joinQueue", async (player: PlayerMp, data: string)
         /* use default */
     }
 
-    if (joinQueue(player, size)) {
+    const ok = asParty ? joinQueueWithParty(player, size, preferredMapId) : joinQueue(player, size, preferredMapId);
+    if (ok) {
         RAGERP.cef.emit(player, "system", "setPage", "arena_lobby");
     }
 });
@@ -33,6 +41,14 @@ RAGERP.cef.register("arena", "leaveMatch", async (player: PlayerMp) => {
     if (leaveMatch(player)) {
         player.showNotify(RageShared.Enums.NotifyType.TYPE_SUCCESS, "Left arena match.");
     }
+});
+
+RAGERP.cef.register("match", "acceptReady", async (player: PlayerMp) => {
+    acceptReadyCheck(player);
+});
+
+RAGERP.cef.register("match", "declineReady", async (player: PlayerMp) => {
+    declineReadyCheck(player);
 });
 
 RAGERP.cef.register("arena", "vote", async (player: PlayerMp, data: string) => {
@@ -101,4 +117,14 @@ mp.events.add("server::arena:useItem", (player: PlayerMp, dataStr: string) => {
         });
         RAGERP.cef.emit(player, "arena", "itemCastComplete", { item });
     }, cfg.castTime);
+});
+
+mp.events.add("server::arena:spectate:switch", (player: PlayerMp, targetId: number) => {
+    if (!player || !mp.players.exists(player) || !player.getVariable("isSpectating")) return;
+    const teammates = getSpectatableTeammates(player.id);
+    const target = teammates.find((t: { playerId: number; playerName: string }) => t.playerId === targetId);
+    if (!target) return;
+    const targetMp = mp.players.at(target.playerId);
+    if (!targetMp || !mp.players.exists(targetMp)) return;
+    startSpectate(player, targetMp);
 });

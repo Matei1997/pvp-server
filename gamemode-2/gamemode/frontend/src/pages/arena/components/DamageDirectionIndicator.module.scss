@@ -1,0 +1,76 @@
+@import "../../../styles/vars.scss";
+
+.damageIndicator {
+    position: fixed;
+    z-index: 70;
+    pointer-events: none;
+    animation: damageIndicatorFade 0.85s ease-out forwards;
+}
+
+.left {
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 80px;
+    height: 140px;
+    background: linear-gradient(
+        to right,
+        rgba(255, 80, 80, 0.55) 0%,
+        rgba(255, 80, 80, 0.2) 35%,
+        transparent 100%
+    );
+}
+
+.right {
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 80px;
+    height: 140px;
+    background: linear-gradient(
+        to left,
+        rgba(255, 80, 80, 0.55) 0%,
+        rgba(255, 80, 80, 0.2) 35%,
+        transparent 100%
+    );
+}
+
+.front {
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 60px;
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 80, 80, 0.55) 0%,
+        rgba(255, 80, 80, 0.2) 40%,
+        transparent 100%
+    );
+}
+
+.behind {
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 60px;
+    background: linear-gradient(
+        to top,
+        rgba(255, 80, 80, 0.55) 0%,
+        rgba(255, 80, 80, 0.2) 40%,
+        transparent 100%
+    );
+}
+
+@keyframes damageIndicatorFade {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.9;
+    }
+    100% {
+        opacity: 0;
+    }
+}

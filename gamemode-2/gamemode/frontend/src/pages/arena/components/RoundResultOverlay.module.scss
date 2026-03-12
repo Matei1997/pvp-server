@@ -1,0 +1,110 @@
+@import "../../../styles/vars.scss";
+
+.roundResultOverlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px 48px;
+    animation: roundResultLifecycle 3s ease-out forwards;
+}
+
+.roundWonTitle {
+    font-family: $display-font;
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+    font-weight: 700;
+    color: #EDEDED;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.teamLabel {
+    font-family: $display-font;
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.teamRed {
+    color: #FF5E5E;
+    text-shadow: 0 0 24px rgba(255, 94, 94, 0.5);
+}
+
+.teamBlue {
+    color: #5E6AD2;
+    text-shadow: 0 0 24px rgba(94, 106, 210, 0.5);
+}
+
+.roundLostTitle {
+    font-family: $display-font;
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 900;
+    color: #FF5E5E;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-shadow: 0 0 32px rgba(255, 94, 94, 0.6);
+    margin-bottom: 12px;
+}
+
+.roundLostSub {
+    font-family: $display-font;
+    font-size: clamp(0.9rem, 2vw, 1.1rem);
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 0.06em;
+}
+
+.clutchTitle {
+    font-family: $display-font;
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 900;
+    color: #FFB74D;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    text-shadow: 0 0 32px rgba(255, 183, 77, 0.6);
+    margin-bottom: 12px;
+}
+
+.clutchPlayer {
+    font-family: $display-font;
+    font-size: clamp(1.25rem, 3vw, 2rem);
+    font-weight: 600;
+    color: #EDEDED;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.clutchVs {
+    font-family: monospace;
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+    font-weight: 700;
+    color: #EDEDED;
+    letter-spacing: 0.1em;
+}
+
+@keyframes roundResultLifecycle {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+    15% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    85% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.98);
+    }
+}

@@ -1,0 +1,110 @@
+@import "../../../styles/vars.scss";
+
+.teamVitals {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    background: rgba(12, 14, 18, 0.88);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    min-width: 160px;
+    max-width: 200px;
+}
+
+.panelTitle {
+    font-family: $display-font;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.teammateList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.teammateRow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+
+    &.dead {
+        opacity: 0.5;
+        filter: grayscale(0.6);
+    }
+}
+
+.rowHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.playerName {
+    font-family: $display-font;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.95);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.deadIcon {
+    font-size: 12px;
+    color: rgba(255, 100, 100, 0.9);
+    flex-shrink: 0;
+}
+
+.bars {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.barRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.barLabel {
+    font-family: $display-font;
+    font-size: 9px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    min-width: 18px;
+}
+
+.barTrack {
+    flex: 1;
+    height: 5px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.barFillHealth {
+    height: 100%;
+    background: linear-gradient(90deg, #27ae60, #2ecc71);
+    border-radius: 3px;
+    transition: width 0.2s ease-out;
+}
+
+.barFillArmour {
+    height: 100%;
+    background: linear-gradient(90deg, #2980b9, #3498db);
+    border-radius: 3px;
+    transition: width 0.2s ease-out;
+}

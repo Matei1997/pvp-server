@@ -1,7 +1,7 @@
 /**
- * Local voice (proximity) + team radio. Push-to-talk only.
+ * Local voice (proximity) + team/channel radio. Push-to-talk only.
  * - Hold N: transmit to players within range (proximity). Release = stop.
- * - Hold M: transmit to teammates (radio, any distance). Release = stop.
+ * - Hold M: transmit to teammates (Hopouts) or same radio channel (outside Hopouts). Release = stop.
  * We are muted by default; unmute only while N or M is held.
  * CEF is notified when transmitting so the HUD can show an indicator.
  */
@@ -18,6 +18,8 @@ const radioListeners = new Set<number>();
 let transmittingLocal = false;
 let transmittingRadio = false;
 let intervalId: ReturnType<typeof setInterval> | null = null;
+/** Outside Hopouts: players on same radio channel (from server). */
+let radioChannelListeners: number[] = [];
 
 function getDistance(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {
     return mp.game.system.vdist(a.x, a.y, a.z, b.x, b.y, b.z);
@@ -36,11 +38,15 @@ function getProximityRemoteIds(): number[] {
     return out;
 }
 
-function getTeammateRemoteIds(): number[] {
+/** Hopouts: arenaTeammateIds. Outside Hopouts: same radio channel (from server). */
+function getRadioRemoteIds(): number[] {
     const local = mp.players.local;
     if (!local || !mp.players.exists(local)) return [];
-    const ids = (local.getVariable("arenaTeammateIds") as number[] | undefined) ?? [];
-    return ids.filter((id) => typeof id === "number" && id !== local.remoteId);
+    const arenaIds = (local.getVariable("arenaTeammateIds") as number[] | undefined) ?? [];
+    if (arenaIds.length > 0) {
+        return arenaIds.filter((id) => typeof id === "number" && id !== local.remoteId);
+    }
+    return radioChannelListeners.filter((id) => id !== local.remoteId);
 }
 
 function removeListener(remoteId: number): void {
@@ -62,7 +68,13 @@ function setMuted(muted: boolean): void {
 function updateTransmitListeners(): void {
     const local = mp.players.local;
     if (!local || !mp.players.exists(local) || !local.getVariable("loggedin")) return;
-    const teammateIds = new Set(getTeammateRemoteIds());
+    if (transmittingRadio) {
+        const arenaIds = (local.getVariable("arenaTeammateIds") as number[] | undefined) ?? [];
+        if (arenaIds.length === 0) {
+            mp.events.callRemote("server::voice:requestRadioListeners");
+        }
+    }
+    const radioIds = new Set(getRadioRemoteIds());
 
     if (transmittingLocal) {
         const proximity = new Set(getProximityRemoteIds());
@@ -83,13 +95,13 @@ function updateTransmitListeners(): void {
     }
 
     if (transmittingRadio) {
-        teammateIds.forEach((remoteId) => {
+        radioIds.forEach((remoteId) => {
             if (radioListeners.has(remoteId)) return;
             radioListeners.add(remoteId);
             addListener(remoteId);
         });
         radioListeners.forEach((remoteId) => {
-            if (!teammateIds.has(remoteId)) {
+            if (!radioIds.has(remoteId)) {
                 radioListeners.delete(remoteId);
                 removeListener(remoteId);
             }
@@ -169,6 +181,10 @@ mp.events.add("playerQuit", (player: PlayerMp) => {
         radioListeners.delete(id);
         removeListener(id);
     }
+});
+
+mp.events.add("client::voice:radioListeners", (ids: number[]) => {
+    radioChannelListeners = Array.isArray(ids) ? ids : [];
 });
 
 // Interval runs only while transmitting (started on key down, stopped when both released).

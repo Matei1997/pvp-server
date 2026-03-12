@@ -47,3 +47,9 @@ RAGERP.cef.register("admin", "executeCommand", (player: PlayerMp, data: string) 
 RAGERP.cef.register("admin", "close", (player: PlayerMp) => {
     RAGERP.cef.emit(player, "system", "setPage", "hud");
 });
+
+RAGERP.cef.register("admin", "open", (player: PlayerMp) => {
+    if (!player?.account || (player.account.adminlevel ?? 0) <= 0) return;
+    RAGERP.cef.startPage(player, "admin");
+    RAGERP.cef.emit(player, "system", "setPage", "admin");
+});

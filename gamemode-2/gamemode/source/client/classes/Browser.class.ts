@@ -157,7 +157,7 @@ class _Browser {
     startPage(pageName: string): void {
         const params = CEFPages[pageName];
         if (!params) return;
-        const isBasePage = pageName === "hud" || pageName === "arena_hud" || pageName === "arena_lobby" || pageName === "arena_voting";
+        const isBasePage = pageName === "hud" || pageName === "arena_hud" || pageName === "arena_lobby" || pageName === "arena_voting" || pageName === "arena_readycheck" || pageName === "ffa_lobby" || pageName === "ffa_hud" || pageName === "gungame_lobby" || pageName === "gungame_hud";
         if (isBasePage) {
             this.lastBasePage = pageName;
         }

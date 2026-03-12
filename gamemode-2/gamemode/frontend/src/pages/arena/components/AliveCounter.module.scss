@@ -1,0 +1,33 @@
+@import "../../../styles/vars.scss";
+
+.aliveCounter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 8px;
+    font-family: $display-font;
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.redAlive {
+    color: #FF5E5E;
+
+    strong {
+        font-weight: 700;
+        font-size: 18px;
+    }
+}
+
+.blueAlive {
+    color: #5E6AD2;
+
+    strong {
+        font-weight: 700;
+        font-size: 18px;
+    }
+}
+

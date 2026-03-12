@@ -19,6 +19,12 @@ export interface ArenaMatchPlayer {
     alive: boolean;
     health?: number;
     armor?: number;
+    /** Optional: damage dealt this round (if backend sends) */
+    damage?: number;
+    /** Optional: headshot hits (if backend sends) */
+    headshots?: number;
+    /** Optional: total hits (if backend sends, for headshot %) */
+    hits?: number;
 }
 
 export interface ArenaMatchData {
@@ -36,8 +42,13 @@ export interface ArenaMatchData {
 }
 
 export interface ArenaKillFeedEntry {
-    killer: string;
-    victim: string;
+    killerId: number;
+    killerName: string;
+    victimId: number;
+    victimName: string;
+    weaponHash: string;
+    weaponName: string;
+    headshot?: boolean;
 }
 
 export interface ArenaMatchEndData {
@@ -46,6 +57,12 @@ export interface ArenaMatchEndData {
     redTeam: ArenaMatchPlayer[];
     blueTeam: ArenaMatchPlayer[];
     winner: "red" | "blue" | "draw";
+    oldMMR?: number;
+    newMMR?: number;
+    rankTier?: string;
+    xpGained?: number;
+    leveledUp?: boolean;
+    newLevel?: number;
 }
 
 export interface ArenaZoneData {
@@ -75,6 +92,17 @@ export interface ArenaRoundEnd {
     roundsToWin: number;
 }
 
+export type ArenaDamageNumberStatus = "health" | "armor" | "headshot";
+
+export interface ArenaDamageNumberEntry {
+    id: string;
+    damage: number;
+    status: ArenaDamageNumberStatus;
+    screenX: number;
+    screenY: number;
+    createdAt: number;
+}
+
 class ArenaStore {
     lobby: ArenaLobbyData = {
         state: "waiting",
@@ -96,13 +124,45 @@ class ArenaStore {
     lastDeathNotification: { type: "death"; killer: string } | null = null;
     scoreboardVisible = false;
     vitals: { health: number; armor: number } = { health: 100, armor: 0 };
-    minimapData: { x: number; y: number; heading: number } | null = null;
+    minimapData: { x: number; y: number; heading: number; localPlayerId?: number } | null = null;
     outOfBounds: { active: boolean; timeLeft: number } = { active: false, timeLeft: 0 };
     myTeam: "red" | "blue" | null = null;
     mapName = "";
     /** Full-screen death overlay (tech style): show "YOU'RE DEAD", then "You won't respawn until next round." */
     arenaDeathOverlayVisible = false;
     arenaDeathRespawnMessage = false;
+    /** Death recap panel: killer, weapon, damage stats. Shown when dead, auto-hides after 5s or round start. */
+    deathRecap: {
+        killerName: string;
+        weaponName: string;
+        totalDamage: number;
+        hits: number;
+        headshots: number;
+        victimDamageToKiller: number;
+    } | null = null;
+    /** Alive count: redAlive, blueAlive. Updated on roundStart, death, disconnect, reconnect. */
+    aliveCount: { redAlive: number; blueAlive: number } | null = null;
+    /** Damage direction indicator: left/right/front/behind. Visible ~800ms, resets on new hit. */
+    damageDirection: { direction: "left" | "right" | "front" | "behind"; at: number } | null = null;
+    /** Armor break indicator: shown when armor transitions from >0 to 0. Visible ~400ms. */
+    armorBreak: { at: number } | null = null;
+    /** Last alive indicator: shown when a team has 1 player vs >1 enemies. Visible 3s. */
+    lastAlive: { playerName: string; team: "red" | "blue"; enemiesRemaining: number } | null = null;
+    /** Spectating: name of teammate being spectated. Set on arena:startSpectate, updated on cycle, cleared on round start. */
+    spectatingTarget: string | null = null;
+    /** Number of spectatable teammates (for "← → to switch" hint). */
+    spectatingTeammateCount: number = 0;
+    /** True when spectate stopped because no teammates remain (show "waiting for next round"). */
+    spectatingNoTeammates: boolean = false;
+    /** Floating damage numbers: id, damage, status, screenX/Y. Auto-removed after ~700ms. */
+    damageNumbers: ArenaDamageNumberEntry[] = [];
+    /** Round result overlay: ROUND WON / CLUTCH. Visible 3s, cleared on round start. */
+    roundResult: {
+        winnerTeam: "red" | "blue" | "draw";
+        winningPlayerName?: string;
+        clutch?: boolean;
+        remainingEnemies?: number;
+    } | null = null;
     private _arenaDeathTimeouts: ReturnType<typeof setTimeout>[] = [];
 
     constructor() {
@@ -148,6 +208,15 @@ class ArenaStore {
         EventManager.addHandler("arena", "roundStart", (data: ArenaRoundStart) => {
             this.roundStart = data;
             this.roundEnd = null;
+            this.roundResult = null;
+            this.aliveCount = null;
+            this.damageDirection = null;
+            this.armorBreak = null;
+            this.lastAlive = null;
+            this.spectatingTarget = null;
+            this.spectatingTeammateCount = 0;
+            this.spectatingNoTeammates = false;
+            this.deathRecap = null;
             this.clearArenaDeathOverlay();
             setTimeout(() => {
                 if (this.roundStart?.round === data.round) this.roundStart = null;
@@ -157,7 +226,26 @@ class ArenaStore {
         EventManager.addHandler("arena", "roundEnd", (data: ArenaRoundEnd) => {
             this.roundEnd = data;
             this.roundStart = null;
-            setTimeout(() => (this.roundEnd = null), 4000);
+            setTimeout(() => (this.roundEnd = null), 3000);
+        });
+
+        EventManager.addHandler("arena", "aliveCount", (data: { redAlive: number; blueAlive: number }) => {
+            this.aliveCount = { redAlive: data.redAlive, blueAlive: data.blueAlive };
+        });
+
+        EventManager.addHandler("arena", "roundResult", (data: {
+            winnerTeam: "red" | "blue" | "draw";
+            winningPlayerName?: string;
+            clutch?: boolean;
+            remainingEnemies?: number;
+        }) => {
+            this.roundResult = {
+                winnerTeam: data.winnerTeam,
+                winningPlayerName: data.winningPlayerName,
+                clutch: data.clutch,
+                remainingEnemies: data.remainingEnemies
+            };
+            this._arenaDeathTimeouts.push(setTimeout(() => (this.roundResult = null), 3000));
         });
 
         EventManager.addHandler("arena", "zoneUpdate", (data: ArenaZoneData) => {
@@ -184,7 +272,38 @@ class ArenaStore {
             this.vitals = data;
         });
 
-        EventManager.addHandler("arena", "setMinimapData", (data: { x: number; y: number; heading: number }) => {
+        EventManager.addHandler("arena", "startSpectate", (data: { teammates: { playerId: number; playerName: string }[] }) => {
+            const teammates = data.teammates ?? [];
+            this.spectatingTarget = teammates.length ? teammates[0].playerName : null;
+            this.spectatingTeammateCount = teammates.length;
+            this.spectatingNoTeammates = false;
+        });
+
+        EventManager.addHandler("arena", "spectateTargetChanged", (data: string | { playerName: string }) => {
+            const parsed = typeof data === "string" ? (() => { try { return JSON.parse(data); } catch { return null; } })() : data;
+            this.spectatingTarget = parsed?.playerName ?? null;
+        });
+
+        EventManager.addHandler("arena", "spectateStopped", () => {
+            this.spectatingTarget = null;
+            this.spectatingTeammateCount = 0;
+            this.spectatingNoTeammates = true;
+        });
+
+        EventManager.addHandler("arena", "lastAlive", (data: { playerId: number; playerName: string; team: "red" | "blue"; enemiesRemaining: number }) => {
+            this.lastAlive = { playerName: data.playerName, team: data.team, enemiesRemaining: data.enemiesRemaining };
+            this._arenaDeathTimeouts.push(setTimeout(() => (this.lastAlive = null), 3000));
+        });
+
+        EventManager.addHandler("arena", "damageDirection", (data: { direction: "left" | "right" | "front" | "behind" }) => {
+            const at = Date.now();
+            this.damageDirection = { direction: data.direction, at };
+            this._arenaDeathTimeouts.push(setTimeout(() => {
+                if (this.damageDirection?.at === at) this.damageDirection = null;
+            }, 850));
+        });
+
+        EventManager.addHandler("arena", "setMinimapData", (data: { x: number; y: number; heading: number; localPlayerId?: number }) => {
             this.minimapData = data;
         });
 
@@ -194,6 +313,22 @@ class ArenaStore {
 
         EventManager.addHandler("arena", "killFeed", (entry: ArenaKillFeedEntry) => {
             this.killFeed = [entry, ...this.killFeed].slice(0, 8);
+        });
+
+        EventManager.addHandler("arena", "damageNumber", (data: { damage: number; status: string; screenX: number; screenY: number }) => {
+            const id = `dn-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            const entry: ArenaDamageNumberEntry = {
+                id,
+                damage: data.damage,
+                status: (data.status === "health" || data.status === "armor" || data.status === "headshot" ? data.status : "health") as ArenaDamageNumberStatus,
+                screenX: data.screenX,
+                screenY: data.screenY,
+                createdAt: Date.now()
+            };
+            this.damageNumbers = [...this.damageNumbers, entry];
+            this._arenaDeathTimeouts.push(setTimeout(() => {
+                this.damageNumbers = this.damageNumbers.filter((e) => e.id !== id);
+            }, 700));
         });
 
         EventManager.addHandler("arena", "youKill", (data: { victim: string }) => {
@@ -219,6 +354,26 @@ class ArenaStore {
             );
         });
 
+        EventManager.addHandler("arena", "deathRecap", (data: {
+            killerName: string;
+            weaponName?: string;
+            weaponHash?: string;
+            totalDamage: number;
+            hits: number;
+            headshots: number;
+            victimDamageToKiller: number;
+        }) => {
+            this.deathRecap = {
+                killerName: data.killerName || "Unknown",
+                weaponName: data.weaponName ?? data.weaponHash ?? "Unknown",
+                totalDamage: data.totalDamage ?? 0,
+                hits: data.hits ?? 0,
+                headshots: data.headshots ?? 0,
+                victimDamageToKiller: data.victimDamageToKiller ?? 0
+            };
+            this._arenaDeathTimeouts.push(setTimeout(() => (this.deathRecap = null), 5000));
+        });
+
         EventManager.addHandler("arena", "toggleScoreboard", () => {
             this.scoreboardVisible = !this.scoreboardVisible;
         });
@@ -226,7 +381,15 @@ class ArenaStore {
         EventManager.addHandler("arena", "matchEnd", (data: ArenaMatchEndData) => {
             this.matchEnd = data;
             this.match = null;
+            this.damageNumbers = [];
             this.zone = null;
+            this.roundResult = null;
+            this.damageDirection = null;
+            this.lastAlive = null;
+            this.spectatingTarget = null;
+            this.spectatingTeammateCount = 0;
+            this.spectatingNoTeammates = false;
+            this.deathRecap = null;
             this.clearArenaDeathOverlay();
         });
 
@@ -235,10 +398,19 @@ class ArenaStore {
             this.matchEnd = null;
             this.roundStart = null;
             this.roundEnd = null;
+            this.roundResult = null;
+            this.damageDirection = null;
+            this.armorBreak = null;
+            this.lastAlive = null;
+            this.spectatingTarget = null;
+            this.spectatingTeammateCount = 0;
+            this.spectatingNoTeammates = false;
             this.zone = null;
             this.killFeed = [];
+            this.damageNumbers = [];
             this.lastKillNotification = null;
             this.lastDeathNotification = null;
+            this.deathRecap = null;
             this.itemCast = null;
             this.itemCounts = { medkits: 0, plates: 0 };
             this.clearArenaDeathOverlay();
