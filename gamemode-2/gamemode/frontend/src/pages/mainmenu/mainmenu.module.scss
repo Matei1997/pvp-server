@@ -1,53 +1,42 @@
 @import "../../styles/vars";
 
-/* Global Lobby Container */
+/* Global Lobby Container - V0 design */
 .lobby {
     position: fixed;
     inset: 0;
-    background: rgba(10, 12, 16, 0.65); /* Semi-transparent base */
+    background: $v0-bg;
     color: #EDEDED;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     z-index: 1;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    backdrop-filter: blur(4px); /* Subtle blur for depth */
-    
-    /* Subtle grid overlay for "game" feel */
-    background-image: 
-        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
+    backdrop-filter: blur(4px);
 
     &.sceneMode {
-        background: transparent; 
+        background: transparent;
         pointer-events: none;
-        
+
         * {
             pointer-events: auto;
         }
     }
 }
 
-/* Floating Navigation Bar */
+/* Floating Navigation Bar - V0 styling */
 .navBar {
-    position: absolute;
-    top: 32px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 90%;
-    max-width: 1400px;
-    height: 72px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 32px;
-    background: rgba(22, 25, 29, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    backdrop-filter: blur(12px);
+    padding: 0 24px;
+    background: $v0-panel;
+    border-bottom: 1px solid $v0-border;
     z-index: 10;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .navLeft {
@@ -63,10 +52,9 @@
 
     .logoMain {
         font-family: $display-font;
-        font-size: 32px;
+        font-size: 18px;
         color: #EDEDED;
-        letter-spacing: 0.05em;
-        text-shadow: 0 0 12px rgba(94, 106, 210, 0.4);
+        letter-spacing: 0.08em;
     }
 
     .logoSub {
@@ -74,7 +62,7 @@
         color: #878787;
         font-weight: 600;
         padding-left: 12px;
-        border-left: 2px solid #5E6AD2;
+        border-left: 2px solid $v0-accent;
         text-transform: uppercase;
         letter-spacing: 0.1em;
     }
@@ -96,38 +84,39 @@
 }
 
 .navLink {
-    padding: 10px 20px;
+    padding: 12px 16px;
     font-family: $display-font;
-    font-size: 18px;
+    font-size: 12px;
+    font-weight: 700;
     color: #878787;
     background: transparent;
     border: none;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+    transition: all 0.2s ease;
     position: relative;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
 
     &::after {
         content: "";
         position: absolute;
-        bottom: 6px;
+        bottom: 0;
         left: 50%;
         transform: translateX(-50%) scaleX(0);
-        width: 24px;
+        width: 100%;
         height: 2px;
-        background: #5E6AD2;
+        background: $v0-accent;
+        box-shadow: 0 0 10px $v0-accent, 0 0 20px rgba(0, 224, 198, 0.5);
         transition: transform 0.2s ease;
     }
 
     &:hover {
         color: #EDEDED;
-        text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
     }
 
     &.active {
-        color: #EDEDED;
-        
+        color: $v0-accent;
+
         &::after {
             transform: translateX(-50%) scaleX(1);
         }
@@ -183,19 +172,19 @@
 
 .adminBtn {
     font-family: $display-font;
-    font-size: 14px;
-    color: #FFB74D;
+    font-size: 12px;
+    font-weight: 700;
+    color: $v0-admin-accent;
     background: transparent;
-    border: 1px solid rgba(255, 183, 77, 0.3);
-    padding: 8px 14px;
-    border-radius: 6px;
+    border: none;
+    padding: 12px 16px;
     cursor: pointer;
     transition: all 0.2s ease;
     text-transform: uppercase;
+    letter-spacing: 0.08em;
 
     &:hover {
-        background: rgba(255, 183, 77, 0.1);
-        border-color: #FFB74D;
+        color: #EDEDED;
     }
 }
 
@@ -203,6 +192,7 @@
     flex: 1;
     position: relative;
     padding: 32px;
+    padding-top: 60px;
     display: flex;
     flex-direction: column;
 }
@@ -235,14 +225,14 @@
     }
 
     &.modeTabActive {
-        color: #EDEDED;
-        font-size: 32px; /* Emphasize active mode */
-        text-shadow: 0 0 20px rgba(94, 106, 210, 0.6);
+        color: $v0-accent;
+        font-size: 28px;
+        text-shadow: 0 0 20px rgba(0, 224, 198, 0.5);
         transform: translateX(8px);
-        
+
         &::before {
             content: "// ";
-            color: #5E6AD2;
+            color: $v0-accent;
         }
     }
 }
@@ -256,29 +246,12 @@
     flex-direction: column;
     gap: 24px;
     padding: 32px;
-    background: rgba(22, 25, 29, 0.9);
-    /* Clip-path for angled corner */
-    clip-path: polygon(
-        0 0, 
-        100% 0, 
-        100% calc(100% - 24px), 
-        calc(100% - 24px) 100%, 
-        0 100%
-    );
-    border-left: 4px solid #5E6AD2;
+    background: $v0-panel;
+    border: 1px solid $v0-border;
+    border-radius: 8px;
+    border-left: 4px solid $v0-accent;
     width: 360px;
     box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
-    
-    /* Decorative border via pseudo-element since clip-path cuts borders */
-    &::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-        pointer-events: none;
-        /* Match clip-path logic approximately */
-    }
 }
 
 .queueMode {
@@ -299,7 +272,7 @@
 
 .queueModeArrows {
     font-size: 14px;
-    color: #5E6AD2;
+    color: $v0-accent;
     font-weight: bold;
 }
 
@@ -315,72 +288,56 @@
     font-family: $display-font;
     font-size: 18px;
     color: #878787;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px; /* Slight rounding */
+    background: $v0-bg;
+    border: 1px solid $v0-border;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
     text-align: center;
     text-transform: uppercase;
 
     &:hover {
-        border-color: #5E6AD2;
+        border-color: $v0-accent;
         color: #EDEDED;
-        background: rgba(94, 106, 210, 0.1);
+        background: $v0-accent-dim;
     }
 
     &.sizeChipActive {
-        color: #16191D;
-        background: #EDEDED; /* Inverted contrast for active state */
-        border-color: #EDEDED;
+        color: $v0-bg;
+        background: $v0-accent;
+        border-color: $v0-accent;
         font-weight: 700;
-        box-shadow: 0 0 16px rgba(255, 255, 255, 0.3);
+        box-shadow: 0 0 18px rgba(0, 224, 198, 0.3);
     }
 }
 
 .queueBtn {
     width: 100%;
-    height: 64px;
+    height: 48px;
     font-family: $display-font;
-    font-size: 28px;
-    color: #fff;
-    background: linear-gradient(135deg, #5E6AD2 0%, #4C58B5 100%);
+    font-size: 18px;
+    font-weight: 700;
+    color: $v0-bg;
+    background: $v0-accent;
     border: none;
-    /* Clip-path for button angle */
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
     margin-top: 8px;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     position: relative;
-    overflow: hidden;
-
-    /* Shine effect */
-    &::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-        transition: left 0.5s ease;
-    }
 
     &:hover:not(:disabled) {
         transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(94, 106, 210, 0.5);
-        
-        &::before {
-            left: 100%;
-        }
+        box-shadow: 0 0 18px rgba(0, 224, 198, 0.3);
     }
 
     &:disabled {
-        opacity: 0.6;
+        opacity: 0.5;
         cursor: not-allowed;
-        background: #2C2E33;
+        background: #1a2332;
+        color: #878787;
     }
 }
 
@@ -432,16 +389,16 @@
                 content: "•";
                 position: absolute;
                 left: 0;
-                color: #5E6AD2;
+                color: $v0-accent;
             }
         }
     }
 }
 
-/* Social Panel - Right Side Stack */
+/* Social Panel - Right Side Stack (V0) */
 .socialPanel {
     position: absolute;
-    top: 128px; /* Below navbar */
+    top: 72px;
     right: 64px;
     width: 280px;
     display: flex;
@@ -450,29 +407,29 @@
 }
 
 .socialSection {
-    background: rgba(22, 25, 29, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    backdrop-filter: blur(8px);
 }
 
 .socialTitle {
     font-family: $display-font;
-    font-size: 14px;
+    font-size: 12px;
+    font-weight: 700;
     color: #878787;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid $v0-border;
     padding-bottom: 8px;
 }
 
 .socialName {
     font-family: $display-font;
-    font-size: 32px;
+    font-size: 24px;
     color: #EDEDED;
     line-height: 1;
 }
@@ -480,10 +437,10 @@
 .socialRank {
     display: inline-block;
     padding: 4px 8px;
-    background: rgba(94, 106, 210, 0.15);
-    color: #7C85E0;
+    background: $v0-accent-dim;
+    color: $v0-accent;
     font-family: $display-font;
-    font-size: 16px;
+    font-size: 14px;
     border-radius: 4px;
     width: fit-content;
     letter-spacing: 0.05em;
@@ -491,19 +448,19 @@
 
 .socialBadges {
     height: 60px;
-    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border: 1px dashed $v0-border;
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
     color: #555;
-    background: rgba(0, 0, 0, 0.2);
+    background: $v0-bg;
 }
 
 .socialSearch {
     position: relative;
-    
+
     .searchIcon {
         position: absolute;
         left: 12px;
@@ -516,9 +473,9 @@
     .searchInput {
         width: 100%;
         height: 40px;
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 4px;
+        background: $v0-bg;
+        border: 1px solid $v0-border;
+        border-radius: 6px;
         padding: 0 12px 0 36px;
         font-size: 13px;
         color: #EDEDED;
@@ -527,7 +484,7 @@
         box-sizing: border-box;
 
         &:focus {
-            border-color: #5E6AD2;
+            border-color: $v0-accent;
             background: rgba(0, 0, 0, 0.5);
         }
     }
@@ -541,9 +498,9 @@
 .inviteSlot {
     flex: 1;
     height: 64px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
+    border: 1px solid $v0-border;
+    background: $v0-bg;
+    border-radius: 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -553,8 +510,8 @@
     transition: all 0.15s ease;
 
     &:hover {
-        border-color: #5E6AD2;
-        background: rgba(94, 106, 210, 0.05);
+        border-color: $v0-accent;
+        background: $v0-accent-dim;
     }
 }
 
@@ -631,16 +588,16 @@
     padding: 8px 12px;
     font-size: 13px;
     color: #EDEDED;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
+    background: $v0-bg;
+    border: 1px solid $v0-border;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
     text-align: left;
 
     &:hover:not(:disabled) {
-        border-color: #5E6AD2;
-        background: rgba(94, 106, 210, 0.1);
+        border-color: $v0-accent;
+        background: $v0-accent-dim;
     }
 
     &:disabled {
@@ -649,8 +606,8 @@
     }
 
     &.friendsListEntryInvited {
-        border-color: rgba(94, 106, 210, 0.4);
-        background: rgba(94, 106, 210, 0.1);
+        border-color: $v0-accent-border;
+        background: $v0-accent-dim;
     }
 }
 
@@ -663,8 +620,8 @@
 .inviteToast {
     margin-top: 8px;
     padding: 12px;
-    background: rgba(94, 106, 210, 0.2);
-    border: 1px solid rgba(94, 106, 210, 0.4);
+    background: $v0-accent-dim;
+    border: 1px solid $v0-accent-border;
     border-radius: 6px;
     font-size: 12px;
     color: #EDEDED;
@@ -721,9 +678,9 @@
     padding: 10px 20px;
     font-size: 14px;
     font-weight: 600;
-    color: #5E6AD2;
-    background: rgba(94, 106, 210, 0.15);
-    border: 1px solid rgba(94, 106, 210, 0.4);
+    color: $v0-accent;
+    background: $v0-accent-dim;
+    border: 1px solid $v0-accent-border;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -756,8 +713,8 @@
 .leaderboardTable {
     width: 100%;
     max-width: 900px;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     overflow: hidden;
 }
@@ -767,8 +724,8 @@
     grid-template-columns: 48px 1fr 90px 70px 50px 50px 60px;
     gap: 12px;
     padding: 12px 20px;
-    background: rgba(94, 106, 210, 0.15);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-accent-dim;
+    border-bottom: 1px solid $v0-border;
     font-family: $display-font;
     font-size: 12px;
     color: #878787;
@@ -781,7 +738,7 @@
     grid-template-columns: 48px 1fr 90px 70px 50px 50px 60px;
     gap: 12px;
     padding: 12px 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid $v0-border;
     font-size: 14px;
     color: #EDEDED;
     align-items: center;
@@ -795,14 +752,14 @@
         transition: background 0.15s ease;
 
         &:hover {
-            background: rgba(94, 106, 210, 0.1);
+            background: $v0-accent-dim;
         }
     }
 }
 
 .colRank {
     font-weight: 600;
-    color: #5E6AD2;
+    color: $v0-accent;
 }
 
 .colPlayer {
@@ -859,22 +816,22 @@
     font-size: 14px;
     color: #878787;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
+    border: 1px solid $v0-border;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 
     &:hover {
-        border-color: #5E6AD2;
+        border-color: $v0-accent;
         color: #EDEDED;
     }
 
     &.loadoutNavActive {
-        color: #EDEDED;
-        border-color: #5E6AD2;
-        background: rgba(94, 106, 210, 0.15);
+        color: $v0-accent;
+        border-color: $v0-accent-border;
+        background: $v0-accent-dim;
     }
 }
 
@@ -927,20 +884,20 @@
     font-weight: 600;
     color: #878787;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid $v0-border;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
 
     &:hover {
         color: #EDEDED;
-        background: rgba(94, 106, 210, 0.1);
+        background: $v0-accent-dim;
     }
 
     &.active {
-        color: #5E6AD2;
-        border-color: rgba(94, 106, 210, 0.4);
-        background: rgba(94, 106, 210, 0.15);
+        color: $v0-accent;
+        border-color: $v0-accent-border;
+        background: $v0-accent-dim;
     }
 }
 
@@ -974,9 +931,9 @@
     margin-left: auto;
     padding: 8px 16px;
     font-size: 14px;
-    color: #5E6AD2;
+    color: $v0-accent;
     background: transparent;
-    border: 1px solid rgba(94, 106, 210, 0.4);
+    border: 1px solid $v0-accent-border;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -993,7 +950,7 @@
 .challengesSectionTitle {
     font-size: 14px;
     font-weight: 600;
-    color: #5E6AD2;
+    color: $v0-accent;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: 12px;
@@ -1014,8 +971,8 @@
     align-items: center;
     gap: 16px;
     padding: 12px 16px;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     margin-bottom: 8px;
     font-size: 14px;
@@ -1065,8 +1022,8 @@
 .prestigeNotice {
     padding: 10px 16px;
     margin-bottom: 16px;
-    background: rgba(94, 106, 210, 0.15);
-    border: 1px solid rgba(94, 106, 210, 0.4);
+    background: $v0-accent-dim;
+    border: 1px solid $v0-accent-border;
     border-radius: 8px;
     font-size: 14px;
     color: #5E6AD2;
@@ -1117,8 +1074,8 @@
     align-items: center;
     gap: 16px;
     padding: 12px 16px;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     font-size: 14px;
 }
@@ -1136,7 +1093,7 @@
 
 .seasonRewardTier {
     font-size: 12px;
-    color: #5E6AD2;
+    color: $v0-accent;
 }
 
 .seasonRewardDetails {
@@ -1170,9 +1127,9 @@
     margin-bottom: 24px;
     padding: 8px 16px;
     font-size: 14px;
-    color: #5E6AD2;
+    color: $v0-accent;
     background: transparent;
-    border: 1px solid rgba(94, 106, 210, 0.4);
+    border: 1px solid $v0-accent-border;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -1187,8 +1144,8 @@
     max-width: 500px;
     padding: 24px;
     padding-bottom: 20px;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     margin-bottom: 24px;
     text-align: center;
@@ -1211,7 +1168,7 @@
 .profileTier {
     font-size: 18px;
     font-weight: 600;
-    color: #5E6AD2;
+    color: $v0-accent;
     margin-bottom: 4px;
 }
 
@@ -1237,7 +1194,7 @@
 .profileLifetime {
     margin-top: 8px;
     font-size: 14px;
-    color: #5E6AD2;
+    color: $v0-accent;
     font-weight: 600;
 }
 
@@ -1245,9 +1202,9 @@
     margin-top: 12px;
     padding: 8px 20px;
     font-size: 14px;
-    color: #5E6AD2;
-    background: rgba(94, 106, 210, 0.15);
-    border: 1px solid rgba(94, 106, 210, 0.4);
+    color: $v0-accent;
+    background: $v0-accent-dim;
+    border: 1px solid $v0-accent-border;
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -1260,8 +1217,8 @@
 .profilePrestigeConfirm {
     margin-top: 12px;
     padding: 12px 16px;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     font-size: 14px;
     color: #EDEDED;
@@ -1314,8 +1271,8 @@
     flex-direction: column;
     gap: 4px;
     padding: 16px;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
 }
 
@@ -1357,8 +1314,8 @@
     color: #878787;
     padding: 24px;
     text-align: center;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
 }
 
@@ -1373,8 +1330,8 @@
     align-items: center;
     gap: 16px;
     padding: 12px 16px;
-    background: rgba(22, 25, 29, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     font-size: 14px;
 }
@@ -1401,7 +1358,7 @@
 }
 
 .profileMatchMmr {
-    color: #5E6AD2;
+    color: $v0-accent;
 }
 
 .profileMatchXp {

@@ -32,7 +32,7 @@ import "@modules/ArenaMinimap.module";
 import "@modules/ArenaSpectateController.module";
 import "@modules/ArenaRadar.module";
 import "@modules/Compass.module";
-import "@modules/MainMenuScene.module";
+import "@modules/MenuPreview.module";
 import "@modules/PartyBridge.module";
 import "@modules/VehicleDamage.module";
 import "@modules/LocalVoice.module";

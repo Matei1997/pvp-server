@@ -8,13 +8,10 @@ const CROUCH_BLEND_DURATION = 0.5;
 // Re-apply crouch (game overrides when aiming). When aiming we re-apply every frame so crouch+ADS+shoot works.
 const CROUCH_REAPPLY_FRAME_SKIP = 3; // when not aiming: every 4th frame
 const INPUT_AIM = 25; // Right-click / aim down sights
+const INPUT_LOOK_BEHIND = 26; // C key default in GTA V - disable when crouched to prevent conflict
 
 let clipsetLoaded = false;
 let isCrouched = false;
-/** When true, stay crouched until next C press (e.g. opened chat with T while crouched, then Enter). */
-let crouchLocked = false;
-/** Set when crouched and chat opens; when chat closes we lock crouch so release-C doesn't stand. */
-let openedChatWhileCrouched = false;
 let frameCount = 0;
 
 async function loadClipset(): Promise<boolean> {
@@ -31,15 +28,14 @@ async function loadClipset(): Promise<boolean> {
 function canCrouch(): boolean {
     if (!mp.players.local.getVariable("loggedin") || mp.players.local.getVariable("isDead")) return false;
     if (mp.players.local.vehicle) return false;
-    if (Browser.currentPage && Browser.currentPage !== "arena_hud") return false;
+    const page = Browser.currentPage;
+    if (page && page !== "arena_hud" && page !== "hud") return false;
     return true;
 }
 
 function resetCrouch() {
     if (mp.players.local.vehicle) return;
     isCrouched = false;
-    crouchLocked = false;
-    openedChatWhileCrouched = false;
     mp.players.local.resetMovementClipset(CROUCH_BLEND_DURATION);
 }
 
@@ -51,34 +47,26 @@ function applyCrouch() {
 
 function standUp() {
     isCrouched = false;
-    crouchLocked = false;
     mp.players.local.resetMovementClipset(CROUCH_BLEND_DURATION);
 }
 
+/** Toggle crouch on C press. Toggle mode avoids key-up not firing when ADS/game consumes input. */
 function onCrouchKeyDown() {
     if (!canCrouch()) return;
-    if (crouchLocked) {
+    if (isCrouched) {
         standUp();
-        return;
+    } else {
+        isCrouched = true;
+        applyCrouch();
     }
-    isCrouched = true;
-    applyCrouch();
-}
-
-function onCrouchKeyUp() {
-    if (crouchLocked) return;
-    if (!canCrouch()) return;
-    standUp();
 }
 
 function bindCrouch() {
-    PlayerKeybind.addKeybind({ keyCode: C_KEY, up: false }, onCrouchKeyDown, "Crouch hold (C down)");
-    PlayerKeybind.addKeybind({ keyCode: C_KEY, up: true }, onCrouchKeyUp, "Crouch release (C up)");
+    PlayerKeybind.addKeybind({ keyCode: C_KEY, up: false }, onCrouchKeyDown, "Crouch toggle (C)");
 }
 
 function unbindCrouch() {
     PlayerKeybind.removeKeybind(C_KEY, false, onCrouchKeyDown);
-    PlayerKeybind.removeKeybind(C_KEY, true, onCrouchKeyUp);
 }
 
 bindCrouch();
@@ -95,15 +83,8 @@ mp.events.add("playerLeaveVehicle", () => {
 mp.events.add("render", () => {
     if (mp.players.local.vehicle) return;
     if (!canCrouch()) {
-        if (Browser.currentPage === "chat" && isCrouched) openedChatWhileCrouched = true;
-        else resetCrouch();
+        resetCrouch();
         return;
-    }
-    // If crouched and chat just opened, remember so we can lock crouch when chat closes (T then Enter = stay crouched)
-    if (Browser.currentPage === "chat" && isCrouched) openedChatWhileCrouched = true;
-    if (Browser.currentPage !== "chat") {
-        if (openedChatWhileCrouched) crouchLocked = true;
-        openedChatWhileCrouched = false;
     }
     // Re-apply crouch - game overrides when aiming. While aiming, re-apply every frame so crouch+ADS+shoot works.
     if (isCrouched && clipsetLoaded) {
@@ -121,4 +102,6 @@ mp.events.add("render", () => {
     }
     // Disable native INPUT_DUCK (36) - prevents game from fighting our clipset
     mp.game.controls.disableControlAction(0, 36, true);
+    // Disable INPUT_LOOK_BEHIND (26) - C is look-behind in GTA V; we use C for crouch, so disable to prevent conflict
+    mp.game.controls.disableControlAction(0, INPUT_LOOK_BEHIND, true);
 });

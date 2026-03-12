@@ -120,10 +120,10 @@
     height: 0;
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
-    border-top: 8px solid #5E6AD2;
+    border-top: 8px solid $v0-accent;
     transform: translateX(-50%);
     z-index: 10;
-    filter: drop-shadow(0 0 4px #5E6AD2);
+    filter: drop-shadow(0 0 4px $v0-accent);
 }
 
 /* Top Center - ScoreBar only */
@@ -175,8 +175,8 @@
 }
 
 .blueTeam {
-    color: #5E6AD2;
-    .score { color: #5E6AD2; }
+    color: $v0-accent;
+    .score { color: $v0-accent; }
 }
 
 .timer {
@@ -272,7 +272,7 @@
 }
 
 .killer {
-    color: #5E6AD2; 
+    color: $v0-accent;
     font-weight: 400;
 }
 
@@ -360,8 +360,8 @@
 }
 
 .sbScoreBlue .sbBigScore {
-    color: #5E6AD2;
-    text-shadow: 0 0 12px rgba(94, 106, 210, 0.35);
+    color: $v0-accent;
+    text-shadow: 0 0 12px rgba(0, 224, 198, 0.35);
 }
 
 .sbScoreDivider {
@@ -398,7 +398,7 @@
 }
 
 .sbTeamCol:last-child {
-    border-left: 3px solid #5E6AD2;
+    border-left: 3px solid $v0-accent;
 }
 
 .sbTeamHeader {
@@ -524,8 +524,8 @@
 }
 
 .rsbScoreBlue .rsbBigScore {
-    color: #5E6AD2;
-    text-shadow: 0 0 12px rgba(94, 106, 210, 0.35);
+    color: $v0-accent;
+    text-shadow: 0 0 12px rgba(0, 224, 198, 0.35);
 }
 
 .rsbScoreDivider {
@@ -562,7 +562,7 @@
 }
 
 .rsbTeamCol:last-child {
-    border-left: 3px solid #5E6AD2;
+    border-left: 3px solid $v0-accent;
 }
 
 .rsbTeamHeader {
@@ -651,7 +651,7 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     
-    &.victory { color: #5E6AD2; text-shadow: 0 0 32px rgba(94, 106, 210, 0.6); }
+    &.victory { color: $v0-accent; text-shadow: 0 0 32px rgba(0, 224, 198, 0.6); }
     &.defeat { color: #FF5E5E; text-shadow: 0 0 32px rgba(255, 94, 94, 0.6); }
 }
 
@@ -870,7 +870,7 @@
 .deathName {
     font-family: $display-font;
     font-size: 20px;
-    color: #5E6AD2;
+    color: $v0-accent;
 }
 
 /* Floating damage numbers - hit position overlay */
@@ -990,16 +990,16 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 
     &:hover:not(.itemDisabled) {
-        border-color: #5E6AD2;
-        background: rgba(94, 106, 210, 0.25);
+        border-color: $v0-accent;
+        background: $v0-accent-dim;
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(94, 106, 210, 0.2);
+        box-shadow: 0 4px 12px rgba(0, 224, 198, 0.2);
     }
-    
+
     &.activeItem {
-        background: rgba(94, 106, 210, 0.25);
-        border-color: #5E6AD2;
-        box-shadow: 0 0 12px rgba(94, 106, 210, 0.3);
+        background: $v0-accent-dim;
+        border-color: $v0-accent;
+        box-shadow: 0 0 12px rgba(0, 224, 198, 0.3);
     }
 }
 

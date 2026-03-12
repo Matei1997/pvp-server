@@ -202,23 +202,25 @@ const CATEGORY_STATS: Record<WeaponCategory, { damage: number; fireRate: number 
     shotguns: { damage: 95, fireRate: 40 },
 };
 
-const CATEGORIES = ["clip", "muzzle", "grip", "scope", "barrel", "flashlight", "skin"] as const;
+/** Display order for attachment slots (matches backend categories) */
+const SLOT_ORDER = ["clip", "scope", "muzzle", "grip", "barrel", "flashlight", "skin"] as const;
+
+const SLOT_LABELS: Record<string, string> = {
+    clip: "Magazine",
+    scope: "Optic",
+    muzzle: "Muzzle",
+    grip: "Grip",
+    barrel: "Barrel",
+    flashlight: "Flashlight",
+    skin: "Skin"
+};
+
 const WEAPON_CATEGORIES: { id: WeaponCategory; label: string }[] = [
     { id: "pistols", label: "Pistols" },
     { id: "smg", label: "SMG" },
     { id: "rifles", label: "Assault rifles" },
     { id: "shotguns", label: "Shotguns" }
 ];
-
-const ATTACHMENT_ICONS: Record<string, string> = {
-    scope: "⊞",
-    muzzle: "◉",
-    grip: "≡",
-    clip: "▤",
-    barrel: "▬",
-    flashlight: "☀",
-    skin: "◆"
-};
 
 const LoadoutPanel: React.FC = () => {
     const [selectedWeapon, setSelectedWeapon] = React.useState(0);
@@ -250,15 +252,14 @@ const LoadoutPanel: React.FC = () => {
     const weaponEquipped = equipped[weapon.weaponName] || {};
     const weaponImage = WEAPON_IMAGES[weapon.weaponName];
 
-    const toggleComponent = (comp: WeaponComp) => {
+    const setComponent = (category: string, hash: number | null) => {
         const newEquipped = { ...equipped };
         if (!newEquipped[weapon.weaponName]) newEquipped[weapon.weaponName] = {};
         const wEq = { ...newEquipped[weapon.weaponName] };
-
-        if (wEq[comp.category] === comp.hash) {
-            delete wEq[comp.category];
+        if (hash === null) {
+            delete wEq[category];
         } else {
-            wEq[comp.category] = comp.hash;
+            wEq[category] = hash;
         }
         newEquipped[weapon.weaponName] = wEq;
         setEquipped(newEquipped);
@@ -271,7 +272,7 @@ const LoadoutPanel: React.FC = () => {
         setTimeout(() => setSaving(false), 1000);
     };
 
-    const categoriesForWeapon = CATEGORIES.filter((cat) => weapon.components.some((c) => c.category === cat));
+    const categoriesForWeapon = SLOT_ORDER.filter((cat) => weapon.components.some((c) => c.category === cat));
     const baseStats = CATEGORY_STATS[weapon.category];
     const recoilValue = Object.keys(weaponEquipped).length > 0
         ? Object.keys(weaponEquipped).reduce((acc, cat) => {
@@ -301,6 +302,7 @@ const LoadoutPanel: React.FC = () => {
 
             <div className={style.loadoutGrid}>
                 <aside className={style.weaponSidebar}>
+                    <div className={style.weaponSidebarTitle}>Weapons</div>
                     <ul className={style.weaponList}>
                         {filteredWeapons.map((w, i) => (
                             <li key={w.weaponName}>
@@ -324,40 +326,44 @@ const LoadoutPanel: React.FC = () => {
                     </ul>
                 </aside>
 
-                <div className={style.weaponPreview}>
-                    <div className={style.previewBg} />
-                    {weaponImage ? (
-                        <img className={style.previewImg} src={weaponImage} alt="" />
-                    ) : (
-                        <IconGun className={style.previewSvg} />
-                    )}
-                    <div className={style.previewLabel}>
+                <div className={style.weaponDetailsPanel}>
+                    <div className={style.weaponPreview}>
+                        <div className={style.previewBg} />
+                        {weaponImage ? (
+                            <img className={style.previewImg} src={weaponImage} alt="" />
+                        ) : (
+                            <IconGun className={style.previewSvg} />
+                        )}
+                    </div>
+                    <div className={style.weaponDetailsHeader}>
                         <span className={style.previewName}>{weapon.displayName}</span>
                         <span className={style.previewCat}>{weapon.category}</span>
                     </div>
-                </div>
-
-                <aside className={style.attachments}>
-                    <section className={style.attSection}>
-                        <h3 className={style.attSectionTitle}>Attachments</h3>
+                    <aside className={style.attachments}>
+                        <h3 className={style.attSectionTitle}>Attachment Slots</h3>
                         <div className={style.compGrid}>
                             {categoriesForWeapon.map((cat) => {
                                 const comps = weapon.components.filter((c) => c.category === cat);
+                                const slotLabel = SLOT_LABELS[cat] ?? cat;
                                 if (comps.length === 0) return null;
                                 return (
                                     <div key={cat} className={style.compGroup}>
-                                        <span className={style.catLabel}>
-                                            {ATTACHMENT_ICONS[cat] && <span className={style.catIcon}>{ATTACHMENT_ICONS[cat]}</span>}
-                                            {cat}
-                                        </span>
+                                        <span className={style.catLabel}>{slotLabel}</span>
                                         <div className={style.compRow}>
+                                            <button
+                                                className={`${style.compBtn} ${!weaponEquipped[cat] ? style.compActive : ""}`}
+                                                onClick={() => setComponent(cat, null)}
+                                                title="None"
+                                            >
+                                                None
+                                            </button>
                                             {comps.map((comp) => {
                                                 const isEquipped = weaponEquipped[cat] === comp.hash;
                                                 return (
                                                     <button
                                                         key={comp.hash}
                                                         className={`${style.compBtn} ${isEquipped ? style.compActive : ""}`}
-                                                        onClick={() => toggleComponent(comp)}
+                                                        onClick={() => setComponent(cat, comp.hash)}
                                                         title={comp.name}
                                                     >
                                                         {comp.name}
@@ -369,8 +375,10 @@ const LoadoutPanel: React.FC = () => {
                                 );
                             })}
                         </div>
-                    </section>
+                    </aside>
+                </div>
 
+                <aside className={style.attachmentsRight}>
                     <section className={style.statsSection}>
                         <h3 className={style.attSectionTitle}>Weapon features</h3>
                         <div className={style.statBars}>

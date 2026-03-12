@@ -7,7 +7,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: $glass-overlay;
+    background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(12px);
     font-family: $global-font;
     color: $hud-text;
@@ -37,9 +37,9 @@
     flex-direction: column;
     gap: 2vh;
     padding: 2vh;
-    background: $glass-panel;
-    border: 1px solid $glass-border;
-    border-radius: $radius-lg;
+    background: $v0-panel;
+    border: 1px solid $v0-border;
+    border-radius: 8px;
     max-width: 50vh;
     width: 100%;
 }
@@ -54,9 +54,9 @@
     padding: 0.9vh 1.2vh;
     font-family: $global-font;
     font-size: 1.1vh;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid $glass-border;
-    border-radius: $radius-sm;
+    background: $v0-bg;
+    border: 1px solid $v0-border;
+    border-radius: 6px;
     color: $hud-text;
     outline: none;
 
@@ -65,7 +65,7 @@
     }
 
     &:focus {
-        border-color: rgba($accent, 0.5);
+        border-color: $v0-accent;
     }
 }
 
@@ -76,16 +76,17 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    background: rgba($accent, 0.3);
-    border: 1px solid rgba($accent, 0.5);
+    background: $v0-accent-dim;
+    border: 1px solid $v0-accent-border;
     border-radius: $radius-sm;
     color: #fff;
     cursor: pointer;
     transition: all 0.2s;
 
     &:hover {
-        background: rgba($accent, 0.5);
-        border-color: $accent;
+        background: $v0-accent;
+        border-color: $v0-accent;
+        color: $v0-bg;
     }
 }
 
@@ -100,23 +101,23 @@
     flex-direction: column;
     gap: 0.4vh;
     padding: 1vh;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid $glass-border;
-    border-radius: $radius-sm;
+    background: $v0-bg;
+    border: 1px solid $v0-border;
+    border-radius: 6px;
 }
 
 .quickLabel {
     font-size: 0.95vh;
     font-weight: 700;
-    color: $accent;
+    color: $v0-accent;
 }
 
 .quickInput {
     padding: 0.5vh 0.8vh;
     font-family: $global-font;
     font-size: 0.95vh;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid $glass-border;
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: $radius-sm;
     color: $hud-text;
 
@@ -130,15 +131,16 @@
     font-family: $global-font;
     font-size: 0.9vh;
     font-weight: 600;
-    background: rgba($accent, 0.2);
-    border: 1px solid rgba($accent, 0.4);
-    border-radius: $radius-sm;
-    color: #fff;
+    background: $v0-accent-dim;
+    border: 1px solid $v0-accent-border;
+    border-radius: 6px;
+    color: $v0-accent;
     cursor: pointer;
     align-self: flex-start;
 
     &:hover {
-        background: rgba($accent, 0.35);
+        background: $v0-accent;
+        color: $v0-bg;
     }
 }
 
@@ -149,7 +151,7 @@
     font-size: 1vh;
     color: $hud-text-muted;
     background: transparent;
-    border: 1px solid $glass-border;
+    border: 1px solid $v0-border;
     border-radius: $radius-sm;
     cursor: pointer;
 

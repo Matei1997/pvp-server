@@ -214,304 +214,22 @@ var RAGERP;
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.joinQueue = joinQueue;
-exports.leaveQueue = leaveQueue;
-exports.vote = vote;
-exports.getLobbyState = getLobbyState;
-exports.startSoloMatch = startSoloMatch;
-const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
-const ArenaPresets_asset_1 = __webpack_require__(/*! ./ArenaPresets.asset */ "./source/server/arena/ArenaPresets.asset.ts");
-const ArenaMatch_manager_1 = __webpack_require__(/*! ./ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
-const ArenaConfig_1 = __webpack_require__(/*! ./ArenaConfig */ "./source/server/arena/ArenaConfig.ts");
-__webpack_require__(/*! ./WeaponPresets.service */ "./source/server/arena/WeaponPresets.service.ts");
-const LOBBY_COUNTDOWN_SEC = 0;
-const VOTING_DURATION_SEC = 0;
-const queues = new Map();
-let nextDimension = 1000;
-ArenaConfig_1.QUEUE_SIZES.forEach((size) => {
-    queues.set(size, {
-        size,
-        queue: [],
-        lobbyPlayers: new Map(),
-        lobbyState: "waiting",
-        countdownInterval: null,
-        votingInterval: null,
-        voteMaps: [],
-        voteEndsAt: 0
-    });
-});
-function getPlayerQueue(player) {
-    for (const q of queues.values()) {
-        if (q.queue.some((p) => p.id === player.id))
-            return q;
-    }
-    return null;
-}
-function emitLobbyToAll(q) {
-    const baseData = {
-        state: q.lobbyState,
-        queueSize: q.size,
-        players: Array.from(q.lobbyPlayers.values()).map((p) => ({
-            id: p.player.id,
-            name: p.player.name,
-            ready: p.ready
-        })),
-        countdown: 0,
-        voteMaps: q.voteMaps.map((m) => ({ id: m.preset.id, name: m.preset.name, votes: m.votes })),
-        voteEndsAt: q.voteEndsAt
-    };
-    if ((q.lobbyState === "waiting" && q.countdownInterval) || q.lobbyState === "voting") {
-        baseData.countdown = Math.max(0, Math.ceil((q.voteEndsAt - Date.now()) / 1000));
-    }
-    const event = q.lobbyState === "voting" ? "setVoting" : "setLobby";
-    q.queue.forEach((p) => {
-        if (mp.players.exists(p)) {
-            const lp = q.lobbyPlayers.get(p.id);
-            const data = { ...baseData, myVote: lp?.voteMapId ?? null };
-            _api_1.RAGERP.cef.emit(p, "arena", event, data);
-        }
-    });
-}
-function startCountdown(q) {
-    if (q.lobbyState !== "waiting" || q.countdownInterval)
-        return;
-    q.voteEndsAt = Date.now() + LOBBY_COUNTDOWN_SEC * 1000;
-    q.countdownInterval = setInterval(() => {
-        const remaining = Math.ceil((q.voteEndsAt - Date.now()) / 1000);
-        emitLobbyToAll(q);
-        if (remaining <= 0) {
-            if (q.countdownInterval)
-                clearInterval(q.countdownInterval);
-            q.countdownInterval = null;
-            startVoting(q);
-        }
-    }, 1000);
-    emitLobbyToAll(q);
-}
-function startVoting(q) {
-    q.lobbyState = "voting";
-    const presets = (0, ArenaPresets_asset_1.getArenaPresets)();
-    const preferredIds = new Set();
-    q.lobbyPlayers.forEach((lp) => {
-        if (lp.preferredMapId)
-            preferredIds.add(lp.preferredMapId);
-    });
-    let candidates = presets.filter((p) => preferredIds.has(p.id));
-    if (candidates.length >= 3) {
-        candidates = [...candidates].sort(() => Math.random() - 0.5).slice(0, 3);
-    }
-    else {
-        const remaining = presets.filter((p) => !preferredIds.has(p.id));
-        const shuffled = remaining.sort(() => Math.random() - 0.5);
-        candidates = candidates.concat(shuffled.slice(0, 3 - candidates.length));
-    }
-    q.voteMaps = candidates.map((p) => ({ preset: p, votes: 0 }));
-    q.voteEndsAt = Date.now() + VOTING_DURATION_SEC * 1000;
-    q.lobbyPlayers.forEach((lp) => {
-        lp.voteMapId = null;
-        if (lp.preferredMapId && q.voteMaps.some((m) => m.preset.id === lp.preferredMapId)) {
-            lp.voteMapId = lp.preferredMapId;
-        }
-    });
-    q.lobbyPlayers.forEach((lp) => {
-        if (!lp.voteMapId)
-            return;
-        const map = q.voteMaps.find((m) => m.preset.id === lp.voteMapId);
-        if (map)
-            map.votes++;
-    });
-    q.queue.forEach((p) => {
-        if (mp.players.exists(p)) {
-            _api_1.RAGERP.cef.emit(p, "system", "setPage", "arena_voting");
-        }
-    });
-    if (q.votingInterval)
-        clearInterval(q.votingInterval);
-    q.votingInterval = setInterval(() => {
-        const remaining = Math.ceil((q.voteEndsAt - Date.now()) / 1000);
-        emitLobbyToAll(q);
-        if (remaining <= 0) {
-            if (q.votingInterval)
-                clearInterval(q.votingInterval);
-            q.votingInterval = null;
-            launchMatch(q);
-        }
-    }, 1000);
-    emitLobbyToAll(q);
-}
-function launchMatch(q) {
-    q.lobbyState = "starting";
-    if (q.voteMaps.length === 0) {
-        q.queue.forEach((p) => p.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "No arena locations available."));
-        resetQueue(q);
-        return;
-    }
-    let winner;
-    const maxVotes = Math.max(...q.voteMaps.map((m) => m.votes), 0);
-    const tied = q.voteMaps.filter((m) => m.votes === maxVotes);
-    winner = tied.length > 1 || maxVotes === 0
-        ? tied[Math.floor(Math.random() * tied.length)]?.preset ?? q.voteMaps[0].preset
-        : q.voteMaps.find((m) => m.votes === maxVotes)?.preset ?? q.voteMaps[0].preset;
-    const players = Array.from(q.lobbyPlayers.values()).map((lp) => lp.player);
-    const dim = nextDimension++;
-    const redTeam = [];
-    const blueTeam = [];
-    players.forEach((p, i) => {
-        if (i % 2 === 0)
-            redTeam.push(p);
-        else
-            blueTeam.push(p);
-    });
-    (0, ArenaMatch_manager_1.startMatch)(dim, winner, redTeam, blueTeam);
-    const matchData = {
-        mapId: winner.id,
-        mapName: winner.name,
-        queueSize: q.size,
-        redTeam: redTeam.map((p) => ({ id: p.id, name: p.name })),
-        blueTeam: blueTeam.map((p) => ({ id: p.id, name: p.name })),
-        dimension: dim,
-        redScore: 0,
-        blueScore: 0,
-        currentRound: 1,
-        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin,
-        timeLeft: ArenaConfig_1.ARENA_CONFIG.maxRoundTime
-    };
-    [...redTeam, ...blueTeam].forEach((p) => {
-        if (mp.players.exists(p)) {
-            _api_1.RAGERP.cef.emit(p, "arena", "setMatch", matchData);
-            _api_1.RAGERP.cef.startPage(p, "arena_hud");
-            _api_1.RAGERP.cef.emit(p, "system", "setPage", "arena_hud");
-        }
-    });
-    redTeam.forEach((p) => {
-        if (mp.players.exists(p))
-            p.call("client::arena:setTeam", ["red"]);
-    });
-    blueTeam.forEach((p) => {
-        if (mp.players.exists(p))
-            p.call("client::arena:setTeam", ["blue"]);
-    });
-    resetQueue(q);
-}
-function resetQueue(q) {
-    q.queue = [];
-    q.lobbyPlayers.clear();
-    q.lobbyState = "waiting";
-    q.voteMaps = [];
-    q.voteEndsAt = 0;
-}
-function joinQueue(player, size = 2, preferredMapId) {
-    if (!player.character) {
-        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "No character loaded.");
-        return false;
-    }
-    if ((0, ArenaMatch_manager_1.isPlayerInArenaMatch)(player)) {
-        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in a match.");
-        return false;
-    }
-    if (getPlayerQueue(player)) {
-        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in a queue.");
-        return false;
-    }
-    const q = queues.get(size);
-    if (!q) {
-        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Invalid queue size.");
-        return false;
-    }
-    q.queue.push(player);
-    q.lobbyPlayers.set(player.id, { player, ready: false, voteMapId: null, preferredMapId: preferredMapId ?? null });
-    const neededPlayers = size * 2;
-    if (q.queue.length >= neededPlayers && !q.countdownInterval) {
-        startCountdown(q);
-    }
-    else {
-        const data = {
-            state: "waiting",
-            queueSize: q.size,
-            players: Array.from(q.lobbyPlayers.values()).map((p) => ({ id: p.player.id, name: p.player.name, ready: p.ready })),
-            countdown: 0,
-            voteMaps: [],
-            voteEndsAt: 0,
-            myVote: null
-        };
-        _api_1.RAGERP.cef.emit(player, "arena", "setLobby", data);
-    }
-    emitLobbyToAll(q);
-    return true;
-}
-function leaveQueue(player) {
-    const q = getPlayerQueue(player);
-    if (!q)
-        return false;
-    const idx = q.queue.findIndex((p) => p.id === player.id);
-    if (idx < 0)
-        return false;
-    q.queue.splice(idx, 1);
-    q.lobbyPlayers.delete(player.id);
-    const neededPlayers = q.size * 2;
-    if (q.queue.length < neededPlayers && q.countdownInterval) {
-        clearInterval(q.countdownInterval);
-        q.countdownInterval = null;
-    }
-    emitLobbyToAll(q);
-    return true;
-}
-function vote(player, mapId) {
-    const q = getPlayerQueue(player);
-    if (!q || q.lobbyState !== "voting")
-        return false;
-    const lp = q.lobbyPlayers.get(player.id);
-    if (!lp)
-        return false;
-    const map = q.voteMaps.find((m) => m.preset.id === mapId);
-    if (!map)
-        return false;
-    if (lp.voteMapId) {
-        const prev = q.voteMaps.find((m) => m.preset.id === lp.voteMapId);
-        if (prev)
-            prev.votes--;
-    }
-    lp.voteMapId = mapId;
-    map.votes++;
-    emitLobbyToAll(q);
-    return true;
-}
-function getLobbyState(size) {
-    const q = queues.get(size);
-    if (!q)
-        return { state: "waiting", playerCount: 0 };
-    return { state: q.lobbyState, playerCount: q.queue.length };
-}
-function startSoloMatch(player, presetId) {
-    if ((0, ArenaMatch_manager_1.isPlayerInArenaMatch)(player))
-        return false;
-    const presets = (0, ArenaPresets_asset_1.getArenaPresets)();
-    if (presets.length === 0)
-        return false;
-    const preset = presetId ? presets.find((p) => p.id === presetId) : presets[0];
-    if (!preset)
-        return false;
-    const dim = nextDimension++;
-    (0, ArenaMatch_manager_1.startMatch)(dim, preset, [player], []);
-    const matchData = {
-        mapId: preset.id,
-        mapName: preset.name,
-        queueSize: 2,
-        redTeam: [{ id: player.id, name: player.name }],
-        blueTeam: [],
-        dimension: dim,
-        redScore: 0,
-        blueScore: 0,
-        currentRound: 1,
-        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin,
-        timeLeft: ArenaConfig_1.ARENA_CONFIG.maxRoundTime
-    };
-    _api_1.RAGERP.cef.emit(player, "arena", "setMatch", matchData);
-    _api_1.RAGERP.cef.startPage(player, "arena_hud");
-    _api_1.RAGERP.cef.emit(player, "system", "setPage", "arena_hud");
-    player.call("client::arena:setTeam", ["red"]);
-    return true;
-}
+exports.declineReadyCheck = exports.acceptReadyCheck = exports.startSoloMatch = exports.getLobbyState = exports.vote = exports.onPlayerDisconnectFromQueue = exports.removePartyFromQueue = exports.leaveQueue = exports.joinQueueWithParty = exports.joinQueue = void 0;
+/**
+ * Re-export from Hopouts mode. Kept for backward compatibility.
+ * Implementation: source/server/modes/hopouts/Arena.module.ts
+ */
+var Arena_module_1 = __webpack_require__(/*! ../modes/hopouts/Arena.module */ "./source/server/modes/hopouts/Arena.module.ts");
+Object.defineProperty(exports, "joinQueue", ({ enumerable: true, get: function () { return Arena_module_1.joinQueue; } }));
+Object.defineProperty(exports, "joinQueueWithParty", ({ enumerable: true, get: function () { return Arena_module_1.joinQueueWithParty; } }));
+Object.defineProperty(exports, "leaveQueue", ({ enumerable: true, get: function () { return Arena_module_1.leaveQueue; } }));
+Object.defineProperty(exports, "removePartyFromQueue", ({ enumerable: true, get: function () { return Arena_module_1.removePartyFromQueue; } }));
+Object.defineProperty(exports, "onPlayerDisconnectFromQueue", ({ enumerable: true, get: function () { return Arena_module_1.onPlayerDisconnectFromQueue; } }));
+Object.defineProperty(exports, "vote", ({ enumerable: true, get: function () { return Arena_module_1.vote; } }));
+Object.defineProperty(exports, "getLobbyState", ({ enumerable: true, get: function () { return Arena_module_1.getLobbyState; } }));
+Object.defineProperty(exports, "startSoloMatch", ({ enumerable: true, get: function () { return Arena_module_1.startSoloMatch; } }));
+Object.defineProperty(exports, "acceptReadyCheck", ({ enumerable: true, get: function () { return Arena_module_1.acceptReadyCheck; } }));
+Object.defineProperty(exports, "declineReadyCheck", ({ enumerable: true, get: function () { return Arena_module_1.declineReadyCheck; } }));
 
 
 /***/ },
@@ -525,40 +243,18 @@ function startSoloMatch(player, presetId) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ARENA_AMMO = exports.ITEM_CONFIG = exports.ZONE_PHASES = exports.VEHICLE_POOL = exports.WEAPON_ROTATION = exports.QUEUE_SIZES = exports.ARENA_CONFIG = void 0;
-const Weapons_assets_1 = __webpack_require__(/*! @assets/Weapons.assets */ "./source/server/assets/Weapons.assets.ts");
-exports.ARENA_CONFIG = {
-    roundsToWin: 7,
-    warmupDuration: 5, // seconds before round starts
-    roundEndDelay: 4, // seconds between rounds
-    matchEndDelay: 8, // seconds before returning to lobby
-    startHealth: 100,
-    startArmor: 100,
-    maxRoundTime: 180, // 3 min per round max (zone should end it before)
-};
-exports.QUEUE_SIZES = [1, 2, 3, 4, 5];
-exports.WEAPON_ROTATION = [
-    { name: "Pistol .50", weapons: [Weapons_assets_1.weaponHash.pistol50] },
-    { name: "Service Carbine + .50", weapons: [Weapons_assets_1.weaponHash.specialcarbine, Weapons_assets_1.weaponHash.pistol50] },
-    { name: "Bullpup + .50", weapons: [Weapons_assets_1.weaponHash.bullpuprifle, Weapons_assets_1.weaponHash.pistol50] },
-    { name: "Carbine MK II + .50", weapons: [Weapons_assets_1.weaponHash.carbinerifle_mk2, Weapons_assets_1.weaponHash.pistol50] },
-    { name: "Pump Shotgun + .50", weapons: [Weapons_assets_1.weaponHash.pumpshotgun, Weapons_assets_1.weaponHash.pistol50] },
-    { name: "Heavy Rifle + .50", weapons: [Weapons_assets_1.weaponHash.assaultrifle, Weapons_assets_1.weaponHash.pistol50] },
-];
-exports.VEHICLE_POOL = [
-    "sultan", "banshee", "drafter", "omnis", "kuruma", "revolter", "buffalo"
-];
-exports.ZONE_PHASES = [
-    { duration: 60, endRadius: 160, dps: 1 },
-    { duration: 50, endRadius: 110, dps: 2 },
-    { duration: 45, endRadius: 70, dps: 4 },
-    { duration: 40, endRadius: 35, dps: 7 },
-    { duration: 30, endRadius: 10, dps: 10 },
-];
-exports.ITEM_CONFIG = {
-    medkit: { castTime: 4000, heal: 100, maxHp: 100, countPerRound: 3 },
-    plate: { castTime: 5000, armor: 25, maxArmor: 100, countPerRound: 3 },
-};
-exports.ARENA_AMMO = 999;
+/**
+ * Re-export from Hopouts mode. Kept for backward compatibility.
+ * Implementation: source/server/modes/hopouts/ArenaConfig.ts
+ */
+var ArenaConfig_1 = __webpack_require__(/*! ../modes/hopouts/ArenaConfig */ "./source/server/modes/hopouts/ArenaConfig.ts");
+Object.defineProperty(exports, "ARENA_CONFIG", ({ enumerable: true, get: function () { return ArenaConfig_1.ARENA_CONFIG; } }));
+Object.defineProperty(exports, "QUEUE_SIZES", ({ enumerable: true, get: function () { return ArenaConfig_1.QUEUE_SIZES; } }));
+Object.defineProperty(exports, "WEAPON_ROTATION", ({ enumerable: true, get: function () { return ArenaConfig_1.WEAPON_ROTATION; } }));
+Object.defineProperty(exports, "VEHICLE_POOL", ({ enumerable: true, get: function () { return ArenaConfig_1.VEHICLE_POOL; } }));
+Object.defineProperty(exports, "ZONE_PHASES", ({ enumerable: true, get: function () { return ArenaConfig_1.ZONE_PHASES; } }));
+Object.defineProperty(exports, "ITEM_CONFIG", ({ enumerable: true, get: function () { return ArenaConfig_1.ITEM_CONFIG; } }));
+Object.defineProperty(exports, "ARENA_AMMO", ({ enumerable: true, get: function () { return ArenaConfig_1.ARENA_AMMO; } }));
 
 
 /***/ },
@@ -571,493 +267,26 @@ exports.ARENA_AMMO = 999;
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getMatchByDimension = getMatchByDimension;
-exports.getMatchByPlayer = getMatchByPlayer;
-exports.isPlayerInArenaMatch = isPlayerInArenaMatch;
-exports.getTeam = getTeam;
-exports.isAliveInMatch = isAliveInMatch;
-exports.startMatch = startMatch;
-exports.handleArenaDeath = handleArenaDeath;
-exports.handleZoneDeath = handleZoneDeath;
-exports.leaveMatch = leaveMatch;
-exports.endMatch = endMatch;
-exports.tickMatches = tickMatches;
-const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
-const Player_event_1 = __webpack_require__(/*! @events/Player.event */ "./source/server/serverevents/Player.event.ts");
-const ArenaConfig_1 = __webpack_require__(/*! ./ArenaConfig */ "./source/server/arena/ArenaConfig.ts");
-const ZoneSystem_1 = __webpack_require__(/*! ./ZoneSystem */ "./source/server/arena/ZoneSystem.ts");
-const WeaponPresets_service_1 = __webpack_require__(/*! ./WeaponPresets.service */ "./source/server/arena/WeaponPresets.service.ts");
-const activeMatches = new Map();
-const playerToMatch = new Map();
-function getMatchByDimension(dim) {
-    return activeMatches.get(dim);
-}
-function getMatchByPlayer(player) {
-    const dim = playerToMatch.get(player.id);
-    return dim !== undefined ? activeMatches.get(dim) : undefined;
-}
-function isPlayerInArenaMatch(player) {
-    return playerToMatch.has(player.id);
-}
-function getTeam(match, playerId) {
-    if (match.redTeam.some((p) => p.id === playerId))
-        return "red";
-    if (match.blueTeam.some((p) => p.id === playerId))
-        return "blue";
-    return null;
-}
-function isAliveInMatch(match, playerId) {
-    const p = [...match.redTeam, ...match.blueTeam].find((x) => x.id === playerId);
-    return p ? p.alive : false;
-}
-function getTeamPlayers(match, team) {
-    return team === "red" ? match.redTeam : match.blueTeam;
-}
-function getAlivePlayers(match, team) {
-    return getTeamPlayers(match, team).filter((p) => p.alive);
-}
-function pickRandomWeaponSet() {
-    const entry = ArenaConfig_1.WEAPON_ROTATION[Math.floor(Math.random() * ArenaConfig_1.WEAPON_ROTATION.length)];
-    return { name: entry.name, weapons: [...entry.weapons] };
-}
-function getZoneCenter(preset) {
-    const safe = preset.safeNodes;
-    if (safe && safe.length > 0) {
-        return safe[Math.floor(Math.random() * safe.length)];
-    }
-    return preset.center;
-}
-function giveRoundWeapons(player, weapons) {
-    player.removeAllWeapons();
-    player.call("client::recoil:reset");
-    weapons.forEach((hash) => {
-        player.giveWeaponEx(hash, ArenaConfig_1.ARENA_AMMO, 30);
-    });
-    (0, WeaponPresets_service_1.applyWeaponPresets)(player, weapons);
-    player.setVariable("weaponsOnBody", weapons);
-}
-function randomVehicleModel() {
-    return ArenaConfig_1.VEHICLE_POOL[Math.floor(Math.random() * ArenaConfig_1.VEHICLE_POOL.length)];
-}
-function spawnTeamVehicles(match, team, spawnPoint) {
-    const players = getTeamPlayers(match, team);
-    const vehicleCount = Math.ceil(players.length / 2);
-    for (let i = 0; i < vehicleCount; i++) {
-        const model = randomVehicleModel();
-        const offset = i * 6;
-        const heading = spawnPoint.heading ?? 0;
-        const rad = (heading * Math.PI) / 180;
-        const vx = spawnPoint.x + Math.sin(rad) * offset;
-        const vy = spawnPoint.y + Math.cos(rad) * offset;
-        try {
-            const veh = mp.vehicles.new(mp.joaat(model), new mp.Vector3(vx, vy, spawnPoint.z), {
-                heading,
-                dimension: match.dimension,
-                locked: false,
-                engine: true
-            });
-            match.vehicles.push(veh);
-        }
-        catch (e) {
-            console.error(`[Arena] Failed to spawn vehicle ${model}:`, e);
-        }
-    }
-}
-function destroyMatchVehicles(match) {
-    match.vehicles.forEach((veh) => {
-        try {
-            if (mp.vehicles.exists(veh))
-                veh.destroy();
-        }
-        catch {
-            /* ignore */
-        }
-    });
-    match.vehicles = [];
-}
-function getAllMatchPlayerMps(match) {
-    const ids = [...match.redTeam, ...match.blueTeam].map((p) => p.id);
-    const result = [];
-    ids.forEach((id) => {
-        const p = mp.players.at(id);
-        if (p && mp.players.exists(p))
-            result.push(p);
-    });
-    return result;
-}
-/** Set arenaTeammateIds and currentTeam for voice radio and /team chat during hopouts. */
-function setArenaVoiceAndTeam(match) {
-    getAllMatchPlayerMps(match).forEach((p) => {
-        const team = getTeam(match, p.id);
-        if (!team)
-            return;
-        const teammates = getTeamPlayers(match, team).map((m) => m.id).filter((id) => id !== p.id);
-        p.setVariable("arenaTeammateIds", teammates);
-        p.setVariable("currentTeam", team);
-    });
-}
-/** Clear arena voice/team vars when leaving match. */
-function clearArenaVoiceAndTeam(player) {
-    player.setVariable("arenaTeammateIds", []);
-    player.setVariable("currentTeam", undefined);
-}
-function emitToAll(match, event, data) {
-    getAllMatchPlayerMps(match).forEach((p) => {
-        _api_1.RAGERP.cef.emit(p, "arena", event, data);
-    });
-}
-function buildMatchUpdate(match) {
-    const timeLeft = match.state === "active" ? Math.max(0, Math.ceil((match.roundEndsAt - Date.now()) / 1000)) : 0;
-    return {
-        state: match.state,
-        redScore: match.redScore,
-        blueScore: match.blueScore,
-        currentRound: match.currentRound,
-        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin,
-        weaponName: match.roundWeaponSet.name,
-        redAlive: getAlivePlayers(match, "red").length,
-        blueAlive: getAlivePlayers(match, "blue").length,
-        redTeam: match.redTeam.map((p) => {
-            const mp_ = mp.players.at(p.id);
-            const health = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.health)) : 0;
-            const armor = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.armour)) : 0;
-            return { id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, alive: p.alive, health, armor };
-        }),
-        blueTeam: match.blueTeam.map((p) => {
-            const mp_ = mp.players.at(p.id);
-            const health = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.health)) : 0;
-            const armor = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.armour)) : 0;
-            return { id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, alive: p.alive, health, armor };
-        }),
-        timeLeft
-    };
-}
-function emitMatchUpdate(match) {
-    emitToAll(match, "matchUpdate", buildMatchUpdate(match));
-}
-function emitKillFeed(match, killerName, victimName) {
-    emitToAll(match, "killFeed", { killer: killerName, victim: victimName });
-}
-function spawnPlayerAtArena(player, spawn, dimension) {
-    player.dimension = dimension;
-    player.spawn(new mp.Vector3(spawn.x, spawn.y, spawn.z));
-    player.heading = spawn.heading ?? 0;
-    player.health = 100;
-    player.armour = 100;
-    player.call("client::arena:requestCollision", [spawn.x, spawn.y, spawn.z]);
-}
-function resetPlayerArenaState(player) {
-    (0, Player_event_1.stopSpectate)(player);
-    player.setVariable("isDead", false);
-    if (player.character) {
-        player.character.deathState = 0 /* RageShared.Players.Enums.DEATH_STATES.STATE_NONE */;
-        player.character.setStoreData(player, "isDead", false);
-    }
-    player.setOwnVariable("deathAnim", null);
-    player.stopScreenEffect("DeathFailMPIn");
-}
-function startMatch(dimension, preset, redTeam, blueTeam) {
-    const firstWeaponSet = pickRandomWeaponSet();
-    const match = {
-        dimension,
-        mapId: preset.id,
-        mapName: preset.name,
-        state: "warmup",
-        redTeam: redTeam.map((p) => ({ id: p.id, name: p.name, alive: true, kills: 0, deaths: 0 })),
-        blueTeam: blueTeam.map((p) => ({ id: p.id, name: p.name, alive: true, kills: 0, deaths: 0 })),
-        redScore: 0,
-        blueScore: 0,
-        currentRound: 1,
-        matchEndsAt: 0,
-        roundEndsAt: 0,
-        preset,
-        vehicles: [],
-        roundWeaponSet: firstWeaponSet
-    };
-    activeMatches.set(dimension, match);
-    [...redTeam, ...blueTeam].forEach((p) => playerToMatch.set(p.id, dimension));
-    beginRound(match);
-}
-function beginRound(match) {
-    match.state = "warmup";
-    destroyMatchVehicles(match);
-    match.redTeam.forEach((p) => (p.alive = true));
-    match.blueTeam.forEach((p) => (p.alive = true));
-    match.roundWeaponSet = pickRandomWeaponSet();
-    const weapons = match.roundWeaponSet.weapons;
-    const redSpawn = match.preset.redSpawn;
-    const blueSpawn = match.preset.blueSpawn;
-    const medkits = ArenaConfig_1.ITEM_CONFIG.medkit.countPerRound;
-    const plates = ArenaConfig_1.ITEM_CONFIG.plate.countPerRound;
-    match.redTeam.forEach((mp_) => {
-        const p = mp.players.at(mp_.id);
-        if (p && mp.players.exists(p)) {
-            resetPlayerArenaState(p);
-            spawnPlayerAtArena(p, redSpawn, match.dimension);
-            p.call("client::player:freeze", [true]);
-            giveRoundWeapons(p, weapons);
-            p.setVariable("arenaMedkits", medkits);
-            p.setVariable("arenaPlates", plates);
-            p.setVariable("arenaCastActive", false);
-            p.setVariable("arenaEffectiveHp", 100);
-            _api_1.RAGERP.cef.emit(p, "arena", "itemCounts", { medkits, plates });
-            p.call("client::arena:setTeam", ["red"]);
-        }
-    });
-    match.blueTeam.forEach((mp_) => {
-        const p = mp.players.at(mp_.id);
-        if (p && mp.players.exists(p)) {
-            resetPlayerArenaState(p);
-            spawnPlayerAtArena(p, blueSpawn, match.dimension);
-            p.call("client::player:freeze", [true]);
-            giveRoundWeapons(p, weapons);
-            p.setVariable("arenaMedkits", medkits);
-            p.setVariable("arenaPlates", plates);
-            p.setVariable("arenaCastActive", false);
-            p.setVariable("arenaEffectiveHp", 100);
-            _api_1.RAGERP.cef.emit(p, "arena", "itemCounts", { medkits, plates });
-            p.call("client::arena:setTeam", ["blue"]);
-        }
-    });
-    spawnTeamVehicles(match, "red", match.preset.redCar);
-    spawnTeamVehicles(match, "blue", match.preset.blueCar);
-    emitToAll(match, "roundStart", {
-        round: match.currentRound,
-        weaponName: match.roundWeaponSet.name,
-        warmupTime: ArenaConfig_1.ARENA_CONFIG.warmupDuration,
-        redScore: match.redScore,
-        blueScore: match.blueScore,
-        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin
-    });
-    emitMatchUpdate(match);
-    const zoneCenter = getZoneCenter(match.preset);
-    match.zoneCenter = zoneCenter;
-    const cx = Number(zoneCenter?.x ?? match.preset.center?.x ?? 0);
-    const cy = Number(zoneCenter?.y ?? match.preset.center?.y ?? 0);
-    const initRadius = 200;
-    if (!Number.isFinite(cx) || !Number.isFinite(cy) || initRadius <= 0) {
-        console.warn("[Hopouts] Invalid zone center, using preset center");
-    }
-    getAllMatchPlayerMps(match).forEach((p) => {
-        p.call("client::arena:zoneInit", [cx, cy, initRadius]);
-    });
-    setArenaVoiceAndTeam(match);
-    (0, ZoneSystem_1.startZone)(match.dimension, cx, cy, ArenaConfig_1.ARENA_CONFIG.warmupDuration * 1000);
-    setTimeout(() => {
-        if (!activeMatches.has(match.dimension))
-            return;
-        match.state = "active";
-        match.roundEndsAt = Date.now() + ArenaConfig_1.ARENA_CONFIG.maxRoundTime * 1000;
-        getAllMatchPlayerMps(match).forEach((p) => {
-            p.call("client::player:freeze", [false]);
-        });
-        const center = match.zoneCenter ?? match.preset.center;
-        emitMatchUpdate(match);
-    }, ArenaConfig_1.ARENA_CONFIG.warmupDuration * 1000);
-}
-function checkRoundEnd(match) {
-    if (match.state !== "active")
-        return;
-    const redAlive = getAlivePlayers(match, "red").length;
-    const blueAlive = getAlivePlayers(match, "blue").length;
-    if (redAlive > 0 && blueAlive > 0)
-        return;
-    let roundWinner;
-    if (redAlive === 0 && blueAlive === 0) {
-        roundWinner = "draw";
-    }
-    else if (redAlive === 0) {
-        roundWinner = "blue";
-        match.blueScore++;
-    }
-    else {
-        roundWinner = "red";
-        match.redScore++;
-    }
-    match.state = "round_end";
-    (0, ZoneSystem_1.stopZone)(match.dimension);
-    getAllMatchPlayerMps(match).forEach((p) => {
-        p.call("client::arena:zoneClear");
-    });
-    emitToAll(match, "roundEnd", {
-        winner: roundWinner,
-        redScore: match.redScore,
-        blueScore: match.blueScore,
-        round: match.currentRound,
-        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin
-    });
-    if (match.redScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin || match.blueScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin) {
-        setTimeout(() => endMatch(match.dimension), ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
-    }
-    else {
-        setTimeout(() => {
-            if (!activeMatches.has(match.dimension))
-                return;
-            match.currentRound++;
-            beginRound(match);
-        }, ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
-    }
-}
-function handleArenaDeath(victim, killer) {
-    const match = getMatchByPlayer(victim);
-    if (!match || match.state !== "active")
-        return false;
-    const victimTeam = getTeam(match, victim.id);
-    if (!victimTeam)
-        return false;
-    const victimData = [...match.redTeam, ...match.blueTeam].find((p) => p.id === victim.id);
-    if (!victimData)
-        return false;
-    victimData.alive = false;
-    victimData.deaths++;
-    if (victim.getVariable("arenaCastActive")) {
-        victim.setVariable("arenaCastActive", false);
-        _api_1.RAGERP.cef.emit(victim, "arena", "itemCastCancel", {});
-    }
-    victim.spawn(victim.position);
-    victim.health = 100;
-    resetPlayerArenaState(victim);
-    victim.removeAllWeapons();
-    let killerName = "";
-    if (killer && mp.players.exists(killer)) {
-        const killerTeam = getTeam(match, killer.id);
-        if (killerTeam && killerTeam !== victimTeam) {
-            const killerData = [...match.redTeam, ...match.blueTeam].find((p) => p.id === killer.id);
-            if (killerData)
-                killerData.kills++;
-            killerName = killer.name;
-            emitKillFeed(match, killer.name, victim.name);
-            _api_1.RAGERP.cef.emit(killer, "arena", "youKill", { victim: victim.name });
-        }
-    }
-    _api_1.RAGERP.cef.emit(victim, "arena", "youDied", { killer: killerName });
-    const aliveTeammates = getAlivePlayers(match, victimTeam);
-    if (aliveTeammates.length > 0) {
-        const target = aliveTeammates[0];
-        const targetMp = mp.players.at(target.id);
-        if (targetMp && mp.players.exists(targetMp)) {
-            (0, Player_event_1.startSpectate)(victim, targetMp);
-        }
-    }
-    emitMatchUpdate(match);
-    checkRoundEnd(match);
-    return true;
-}
-function handleZoneDeath(player) {
-    handleArenaDeath(player, undefined);
-}
-function leaveMatch(player, returnToMenu = true) {
-    const match = getMatchByPlayer(player);
-    if (!match)
-        return false;
-    playerToMatch.delete(player.id);
-    // Inventory system removed - no cast cancellation needed
-    // Inventory system removed - no item clearing needed
-    player.dimension = 0;
-    player.removeAllWeapons();
-    player.call("client::player:freeze", [false]);
-    (0, Player_event_1.stopSpectate)(player, false);
-    player.call("client::arena:zoneClear");
-    clearArenaVoiceAndTeam(player);
-    match.redTeam = match.redTeam.filter((p) => p.id !== player.id);
-    match.blueTeam = match.blueTeam.filter((p) => p.id !== player.id);
-    const remaining = [...match.redTeam, ...match.blueTeam];
-    if (remaining.length === 0) {
-        destroyMatchVehicles(match);
-        (0, ZoneSystem_1.stopZone)(match.dimension);
-        activeMatches.delete(match.dimension);
-    }
-    else {
-        emitMatchUpdate(match);
-        if (match.state === "active")
-            checkRoundEnd(match);
-    }
-    player.call("client::arena:clearTeam");
-    if (returnToMenu) {
-        _api_1.RAGERP.cef.startPage(player, "mainmenu");
-        _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
-    }
-    _api_1.RAGERP.cef.emit(player, "arena", "leftMatch", null);
-    return true;
-}
-function endMatch(dimension) {
-    const match = activeMatches.get(dimension);
-    if (!match)
-        return;
-    match.state = "match_end";
-    (0, ZoneSystem_1.stopZone)(match.dimension);
-    destroyMatchVehicles(match);
-    const winner = match.redScore > match.blueScore ? "red" : match.blueScore > match.redScore ? "blue" : "draw";
-    const results = {
-        redScore: match.redScore,
-        blueScore: match.blueScore,
-        winner,
-        redTeam: match.redTeam.map((p) => ({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths })),
-        blueTeam: match.blueTeam.map((p) => ({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths }))
-    };
-    const allPlayers = getAllMatchPlayerMps(match);
-    allPlayers.forEach((p) => {
-        playerToMatch.delete(p.id);
-        clearArenaVoiceAndTeam(p);
-        // Inventory system removed - no cast cancellation needed
-        p.removeAllWeapons();
-        p.call("client::player:freeze", [false]);
-        (0, Player_event_1.stopSpectate)(p, false);
-        p.call("client::arena:zoneClear");
-        _api_1.RAGERP.cef.emit(p, "arena", "matchEnd", results);
-    });
-    activeMatches.delete(dimension);
-    setTimeout(() => {
-        allPlayers.forEach((p) => {
-            if (mp.players.exists(p)) {
-                p.dimension = 0;
-                p.call("client::arena:clearTeam");
-                _api_1.RAGERP.cef.startPage(p, "mainmenu");
-                _api_1.RAGERP.cef.emit(p, "system", "setPage", "mainmenu");
-            }
-        });
-    }, ArenaConfig_1.ARENA_CONFIG.matchEndDelay * 1000);
-}
-function tickMatches() {
-    const now = Date.now();
-    activeMatches.forEach((match, dim) => {
-        if (match.state === "active" && now >= match.roundEndsAt) {
-            const redAlive = getAlivePlayers(match, "red").length;
-            const blueAlive = getAlivePlayers(match, "blue").length;
-            if (redAlive > blueAlive)
-                match.redScore++;
-            else if (blueAlive > redAlive)
-                match.blueScore++;
-            match.state = "round_end";
-            (0, ZoneSystem_1.stopZone)(dim);
-            getAllMatchPlayerMps(match).forEach((p) => {
-                p.call("client::arena:zoneClear");
-            });
-            emitToAll(match, "roundEnd", {
-                winner: redAlive > blueAlive ? "red" : blueAlive > redAlive ? "blue" : "draw",
-                redScore: match.redScore,
-                blueScore: match.blueScore,
-                round: match.currentRound,
-                roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin
-            });
-            if (match.redScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin || match.blueScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin) {
-                setTimeout(() => endMatch(dim), ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
-            }
-            else {
-                setTimeout(() => {
-                    if (!activeMatches.has(dim))
-                        return;
-                    match.currentRound++;
-                    beginRound(match);
-                }, ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
-            }
-        }
-        else if (match.state === "active") {
-            emitMatchUpdate(match);
-        }
-    });
-}
-setInterval(tickMatches, 1000);
+exports.tickMatches = exports.endMatch = exports.restoreReconnectingPlayer = exports.leaveMatch = exports.handleMatchDisconnect = exports.handleZoneDeath = exports.handleArenaDeath = exports.startMatch = exports.getSpectatableTeammates = exports.isAliveInMatch = exports.getTeam = exports.isPlayerInArenaMatch = exports.getMatchByPlayer = exports.getMatchByDimension = void 0;
+/**
+ * Re-export from Hopouts mode. Kept for backward compatibility.
+ * Implementation: source/server/modes/hopouts/ArenaMatch.manager.ts
+ */
+var ArenaMatch_manager_1 = __webpack_require__(/*! ../modes/hopouts/ArenaMatch.manager */ "./source/server/modes/hopouts/ArenaMatch.manager.ts");
+Object.defineProperty(exports, "getMatchByDimension", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.getMatchByDimension; } }));
+Object.defineProperty(exports, "getMatchByPlayer", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.getMatchByPlayer; } }));
+Object.defineProperty(exports, "isPlayerInArenaMatch", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.isPlayerInArenaMatch; } }));
+Object.defineProperty(exports, "getTeam", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.getTeam; } }));
+Object.defineProperty(exports, "isAliveInMatch", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.isAliveInMatch; } }));
+Object.defineProperty(exports, "getSpectatableTeammates", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.getSpectatableTeammates; } }));
+Object.defineProperty(exports, "startMatch", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.startMatch; } }));
+Object.defineProperty(exports, "handleArenaDeath", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.handleArenaDeath; } }));
+Object.defineProperty(exports, "handleZoneDeath", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.handleZoneDeath; } }));
+Object.defineProperty(exports, "handleMatchDisconnect", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.handleMatchDisconnect; } }));
+Object.defineProperty(exports, "leaveMatch", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.leaveMatch; } }));
+Object.defineProperty(exports, "restoreReconnectingPlayer", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.restoreReconnectingPlayer; } }));
+Object.defineProperty(exports, "endMatch", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.endMatch; } }));
+Object.defineProperty(exports, "tickMatches", ({ enumerable: true, get: function () { return ArenaMatch_manager_1.tickMatches; } }));
 
 
 /***/ },
@@ -1069,98 +298,15 @@ setInterval(tickMatches, 1000);
 (__unused_webpack_module, exports, __webpack_require__) {
 
 
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getArenaPresets = getArenaPresets;
-exports.saveArenaPreset = saveArenaPreset;
-const fs = __importStar(__webpack_require__(/*! fs */ "fs"));
-const path = __importStar(__webpack_require__(/*! path */ "path"));
-const DATA_PATH = path.join(process.cwd(), "data", "arenas.json");
-let presets = [];
-function ensureDataDir() {
-    const dir = path.dirname(DATA_PATH);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-}
-function loadPresets() {
-    try {
-        ensureDataDir();
-        if (fs.existsSync(DATA_PATH)) {
-            const raw = fs.readFileSync(DATA_PATH, "utf-8");
-            const parsed = JSON.parse(raw);
-            presets = Array.isArray(parsed) ? parsed : [];
-        }
-        else {
-            presets = [];
-            fs.writeFileSync(DATA_PATH, JSON.stringify([], null, 2), "utf-8");
-        }
-    }
-    catch (err) {
-        console.error("[Hopouts] Failed to load locations:", err);
-        presets = [];
-    }
-    return presets;
-}
-function getArenaPresets() {
-    if (presets.length === 0) {
-        loadPresets();
-    }
-    return presets;
-}
-function saveArenaPreset(preset) {
-    try {
-        ensureDataDir();
-        const all = getArenaPresets();
-        const idx = all.findIndex((p) => p.id === preset.id);
-        if (idx >= 0) {
-            all[idx] = preset;
-        }
-        else {
-            all.push(preset);
-        }
-        fs.writeFileSync(DATA_PATH, JSON.stringify(all, null, 2), "utf-8");
-        presets = all;
-        return true;
-    }
-    catch (err) {
-        console.error("[Hopouts] Failed to save location:", err);
-        return false;
-    }
-}
-loadPresets();
+exports.saveArenaPreset = exports.getArenaPresets = void 0;
+/**
+ * Re-export from Hopouts mode. Kept for backward compatibility.
+ * Implementation: source/server/modes/hopouts/ArenaPresets.asset.ts
+ */
+var ArenaPresets_asset_1 = __webpack_require__(/*! ../modes/hopouts/ArenaPresets.asset */ "./source/server/modes/hopouts/ArenaPresets.asset.ts");
+Object.defineProperty(exports, "getArenaPresets", ({ enumerable: true, get: function () { return ArenaPresets_asset_1.getArenaPresets; } }));
+Object.defineProperty(exports, "saveArenaPreset", ({ enumerable: true, get: function () { return ArenaPresets_asset_1.saveArenaPreset; } }));
 
 
 /***/ },
@@ -1418,7 +564,7 @@ async function applyWeaponPresets(player, weaponHashes) {
     if (!player.character)
         return;
     const presets = await loadPlayerPresets(player.character.id);
-    let combinedRecoil = 1.0;
+    const recoilByWeapon = {};
     for (const hash of weaponHashes) {
         const attachData = (0, WeaponAttachments_data_1.getWeaponAttachments)(hash);
         if (!attachData)
@@ -1428,10 +574,10 @@ async function applyWeaponPresets(player, weaponHashes) {
             continue;
         const validComponents = preset.components.filter(ch => attachData.components.some(c => c.hash === ch));
         player.call("client::weapon:applyComponents", [hash, JSON.stringify(validComponents)]);
-        const weaponRecoil = (0, WeaponAttachments_data_1.calculateRecoilModifier)(hash, validComponents);
-        combinedRecoil *= weaponRecoil;
+        const modifier = (0, WeaponAttachments_data_1.calculateRecoilModifier)(hash, validComponents);
+        recoilByWeapon[String(hash)] = modifier;
     }
-    player.call("client::recoil:setModifier", [combinedRecoil]);
+    player.call("client::recoil:setModifiers", [JSON.stringify(recoilByWeapon)]);
 }
 _api_1.RAGERP.cef.register("loadout", "getPresets", async (player) => {
     if (!player.character)
@@ -1456,154 +602,6 @@ _api_1.RAGERP.cef.register("loadout", "savePreset", async (player, data) => {
         player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Failed to save loadout.");
     }
 });
-
-
-/***/ },
-
-/***/ "./source/server/arena/ZoneSystem.ts"
-/*!*******************************************!*\
-  !*** ./source/server/arena/ZoneSystem.ts ***!
-  \*******************************************/
-(__unused_webpack_module, exports, __webpack_require__) {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.startZone = startZone;
-exports.stopZone = stopZone;
-exports.getZoneState = getZoneState;
-exports.tickZones = tickZones;
-const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
-const ArenaConfig_1 = __webpack_require__(/*! ./ArenaConfig */ "./source/server/arena/ArenaConfig.ts");
-const ArenaMatch_manager_1 = __webpack_require__(/*! ./ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
-const activeZones = new Map();
-const outOfBoundsStart = new Map();
-const OUT_OF_BOUNDS_RADIUS = 320;
-const OUT_OF_BOUNDS_GRACE = 8;
-function startZone(dimension, centerX, centerY, elapsedOffsetMs = 0) {
-    if (ArenaConfig_1.ZONE_PHASES.length === 0)
-        return;
-    const firstPhase = ArenaConfig_1.ZONE_PHASES[0];
-    const zone = {
-        dimension,
-        centerX,
-        centerY,
-        currentRadius: 200,
-        targetRadius: firstPhase.endRadius,
-        currentPhase: 0,
-        phaseStartedAt: Date.now() - elapsedOffsetMs,
-        phaseDuration: firstPhase.duration * 1000,
-        dps: firstPhase.dps,
-        active: true
-    };
-    activeZones.set(dimension, zone);
-}
-function stopZone(dimension) {
-    activeZones.delete(dimension);
-    outOfBoundsStart.clear();
-}
-function getZoneState(dimension) {
-    return activeZones.get(dimension);
-}
-function advancePhase(zone) {
-    zone.currentPhase++;
-    if (zone.currentPhase >= ArenaConfig_1.ZONE_PHASES.length) {
-        return false;
-    }
-    const phase = ArenaConfig_1.ZONE_PHASES[zone.currentPhase];
-    zone.currentRadius = zone.targetRadius;
-    zone.targetRadius = phase.endRadius;
-    zone.phaseDuration = phase.duration * 1000;
-    zone.phaseStartedAt = Date.now();
-    zone.dps = phase.dps;
-    return true;
-}
-function getCurrentRadius(zone) {
-    const elapsed = Date.now() - zone.phaseStartedAt;
-    const progress = Math.min(1, elapsed / zone.phaseDuration);
-    return zone.currentRadius + (zone.targetRadius - zone.currentRadius) * progress;
-}
-function isInZone(zone, x, y) {
-    const radius = getCurrentRadius(zone);
-    const dx = x - zone.centerX;
-    const dy = y - zone.centerY;
-    return (dx * dx + dy * dy) <= (radius * radius);
-}
-function tickZones() {
-    const now = Date.now();
-    activeZones.forEach((zone, dim) => {
-        if (!zone.active)
-            return;
-        const match = (0, ArenaMatch_manager_1.getMatchByDimension)(dim);
-        if (!match || match.state !== "active")
-            return;
-        const elapsed = now - zone.phaseStartedAt;
-        if (elapsed >= zone.phaseDuration) {
-            if (!advancePhase(zone)) {
-                zone.active = false;
-            }
-        }
-        const radius = getCurrentRadius(zone);
-        const safeRadius = Number.isFinite(radius) && radius > 0 ? Math.round(radius) : 200;
-        const phaseTimeLeft = Math.max(0, Math.ceil((zone.phaseDuration - (now - zone.phaseStartedAt)) / 1000));
-        const allPlayers = [...match.redTeam, ...match.blueTeam];
-        const playersToKill = [];
-        allPlayers.forEach((mp_) => {
-            const p = mp.players.at(mp_.id);
-            if (!p || !mp.players.exists(p))
-                return;
-            if (mp_.alive && !isInZone(zone, p.position.x, p.position.y)) {
-                const currentHp = p.health;
-                const newHp = currentHp - zone.dps;
-                if (newHp <= 0) {
-                    playersToKill.push(p);
-                }
-                else {
-                    p.health = newHp;
-                }
-            }
-            const dx = p.position.x - zone.centerX;
-            const dy = p.position.y - zone.centerY;
-            const distSq = dx * dx + dy * dy;
-            if (distSq > OUT_OF_BOUNDS_RADIUS * OUT_OF_BOUNDS_RADIUS) {
-                const startedAt = outOfBoundsStart.get(p.id) ?? now;
-                outOfBoundsStart.set(p.id, startedAt);
-                const timeLeft = Math.max(0, OUT_OF_BOUNDS_GRACE - Math.floor((now - startedAt) / 1000));
-                _api_1.RAGERP.cef.emit(p, "arena", "outOfBounds", { active: true, timeLeft });
-                if (timeLeft <= 0) {
-                    playersToKill.push(p);
-                }
-            }
-            else if (outOfBoundsStart.has(p.id)) {
-                outOfBoundsStart.delete(p.id);
-                _api_1.RAGERP.cef.emit(p, "arena", "outOfBounds", { active: false, timeLeft: 0 });
-            }
-            p.call("client::arena:zoneUpdate", [
-                zone.centerX,
-                zone.centerY,
-                Math.round(radius),
-                zone.currentPhase + 1,
-                ArenaConfig_1.ZONE_PHASES.length,
-                phaseTimeLeft,
-                zone.dps
-            ]);
-            _api_1.RAGERP.cef.emit(p, "arena", "zoneUpdate", {
-                centerX: zone.centerX,
-                centerY: zone.centerY,
-                radius: safeRadius,
-                phase: zone.currentPhase + 1,
-                totalPhases: ArenaConfig_1.ZONE_PHASES.length,
-                phaseTimeLeft,
-                dps: zone.dps
-            });
-        });
-        playersToKill.forEach((p) => {
-            if (mp.players.exists(p)) {
-                (0, ArenaMatch_manager_1.handleZoneDeath)(p);
-            }
-        });
-    });
-}
-setInterval(tickZones, 1000);
 
 
 /***/ },
@@ -5410,6 +4408,25 @@ _api_1.RAGERP.commands.add({
 mp.events.add("startEditAttachServer", () => {
     attachEditorEditing = true;
 });
+_api_1.RAGERP.commands.add({
+    name: "generateSeasonRewards",
+    aliases: ["genrewards"],
+    description: "Generate season-end rewards for a season: /generateSeasonRewards <seasonId>",
+    adminlevel: ADMIN_DEV,
+    run: async (player, _fulltext, seasonId) => {
+        if (!seasonId)
+            return _api_1.RAGERP.chat.sendSyntaxError(player, "/generateSeasonRewards <seasonId>");
+        try {
+            const { generateSeasonRewards } = await Promise.resolve().then(() => __importStar(__webpack_require__(/*! @modules/seasons/SeasonRewardsManager */ "./source/server/modules/seasons/SeasonRewardsManager.ts")));
+            const count = await generateSeasonRewards(seasonId);
+            player.showNotify("success" /* RageShared.Enums.NotifyType.TYPE_SUCCESS */, `Generated ${count} rewards for ${seasonId}`);
+        }
+        catch (err) {
+            console.error("[SeasonRewards] generateSeasonRewards failed:", err);
+            player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Failed to generate rewards.");
+        }
+    }
+});
 mp.events.add("finishAttach", (player, objectJson) => {
     attachEditorEditing = false;
     try {
@@ -5755,6 +4772,26 @@ _api_1.RAGERP.commands.add({
     }
 });
 _api_1.RAGERP.commands.add({
+    name: "setradio",
+    description: "Set radio channel (3-4 digits). Only used outside Hopouts matches.",
+    run: (player, _fulltext, channelStr) => {
+        if (!channelStr || !channelStr.trim()) {
+            const current = player.getVariable("radioChannel") ?? 1000;
+            return player.showNotify("info" /* RageShared.Enums.NotifyType.TYPE_INFO */, `Current radio channel: ${current}. Use /setradio [3-4 digit number]`);
+        }
+        const s = channelStr.trim();
+        if (s.length < 3 || s.length > 4) {
+            return player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Channel must be 3 or 4 digits.");
+        }
+        const num = parseInt(s, 10);
+        if (isNaN(num) || num < 100 || num > 9999) {
+            return player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Channel must be 100-9999.");
+        }
+        player.setVariable("radioChannel", num);
+        player.showNotify("success" /* RageShared.Enums.NotifyType.TYPE_SUCCESS */, `Radio channel set to ${num}.`);
+    }
+});
+_api_1.RAGERP.commands.add({
     name: "shout",
     aliases: ["s"],
     description: "Shoutout a message",
@@ -5840,6 +4877,11 @@ const dotenv = __importStar(__webpack_require__(/*! dotenv */ "dotenv"));
 const Vehicle_entity_1 = __webpack_require__(/*! ./entity/Vehicle.entity */ "./source/server/database/entity/Vehicle.entity.ts");
 const Bank_entity_1 = __webpack_require__(/*! @entities/Bank.entity */ "./source/server/database/entity/Bank.entity.ts");
 const WeaponPreset_entity_1 = __webpack_require__(/*! ./entity/WeaponPreset.entity */ "./source/server/database/entity/WeaponPreset.entity.ts");
+const PlayerStats_entity_1 = __webpack_require__(/*! @modules/stats/PlayerStats.entity */ "./source/server/modules/stats/PlayerStats.entity.ts");
+const PlayerMatchHistory_entity_1 = __webpack_require__(/*! @modules/stats/PlayerMatchHistory.entity */ "./source/server/modules/stats/PlayerMatchHistory.entity.ts");
+const PlayerChallengeProgress_entity_1 = __webpack_require__(/*! @modules/stats/PlayerChallengeProgress.entity */ "./source/server/modules/stats/PlayerChallengeProgress.entity.ts");
+const PlayerSeasonStats_entity_1 = __webpack_require__(/*! @modules/seasons/PlayerSeasonStats.entity */ "./source/server/modules/seasons/PlayerSeasonStats.entity.ts");
+const PlayerSeasonReward_entity_1 = __webpack_require__(/*! @modules/seasons/PlayerSeasonReward.entity */ "./source/server/modules/seasons/PlayerSeasonReward.entity.ts");
 dotenv.config();
 // Ensure log directory exists so the database logger can write (server runs from ragemp-server folder)
 const dblogsDir = path.resolve(process.cwd(), "dblogs");
@@ -5873,7 +4915,7 @@ exports.MainDataSource = new typeorm_1.DataSource({
     synchronize: true,
     connectTimeoutMS: config.connectTimeout,
     logging: ["error"],
-    entities: [Account_entity_1.AccountEntity, Character_entity_1.CharacterEntity, Bank_entity_1.BankAccountEntity, Ban_entity_1.BanEntity, Vehicle_entity_1.VehicleEntity, WeaponPreset_entity_1.WeaponPresetEntity],
+    entities: [Account_entity_1.AccountEntity, Character_entity_1.CharacterEntity, Bank_entity_1.BankAccountEntity, Ban_entity_1.BanEntity, Vehicle_entity_1.VehicleEntity, WeaponPreset_entity_1.WeaponPresetEntity, PlayerStats_entity_1.PlayerStatsEntity, PlayerMatchHistory_entity_1.PlayerMatchHistoryEntity, PlayerChallengeProgress_entity_1.PlayerChallengeProgressEntity, PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity, PlayerSeasonReward_entity_1.PlayerSeasonRewardEntity],
     migrations: [],
     subscribers: [],
     logger: Logger_module_1.DatabaseLogger.getInstance(loggerConfig)
@@ -6608,6 +5650,2495 @@ exports.WeaponPresetEntity = WeaponPresetEntity = __decorate([
 
 /***/ },
 
+/***/ "./source/server/modes/ffa/Ffa.module.ts"
+/*!***********************************************!*\
+  !*** ./source/server/modes/ffa/Ffa.module.ts ***!
+  \***********************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.joinFfaQueue = joinFfaQueue;
+exports.leaveFfaQueue = leaveFfaQueue;
+exports.onPlayerDisconnectFromFfaQueue = onPlayerDisconnectFromFfaQueue;
+/**
+ * FFA queue and launch flow. Separate from Hopouts.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const FfaMatch_manager_1 = __webpack_require__(/*! ./FfaMatch.manager */ "./source/server/modes/ffa/FfaMatch.manager.ts");
+const FfaConfig_1 = __webpack_require__(/*! ./FfaConfig */ "./source/server/modes/ffa/FfaConfig.ts");
+const ffaQueue = [];
+const FFA_QUEUE_SIZE = "ffa";
+function getQueueForPlayer(player) {
+    if (ffaQueue.some((p) => p.id === player.id))
+        return ffaQueue;
+    return null;
+}
+function emitFfaLobbyToAll() {
+    const data = {
+        players: ffaQueue.map((p) => ({ id: p.id, name: p.name })),
+        needed: FfaConfig_1.FFA_CONFIG.minPlayersToStart,
+        maxPlayers: FfaConfig_1.FFA_CONFIG.maxPlayers
+    };
+    ffaQueue.forEach((p) => {
+        if (mp.players.exists(p)) {
+            _api_1.RAGERP.cef.emit(p, "ffa", "setLobby", data);
+        }
+    });
+}
+function joinFfaQueue(player) {
+    if (!player.character) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "No character loaded.");
+        return false;
+    }
+    if ((0, FfaMatch_manager_1.isPlayerInFfaMatch)(player)) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in a match.");
+        return false;
+    }
+    if (getQueueForPlayer(player)) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in FFA queue.");
+        return false;
+    }
+    ffaQueue.push(player);
+    _api_1.RAGERP.cef.startPage(player, "ffa_lobby");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "ffa_lobby");
+    emitFfaLobbyToAll();
+    if (ffaQueue.length >= FfaConfig_1.FFA_CONFIG.minPlayersToStart) {
+        startFfaFromQueue();
+    }
+    return true;
+}
+function startFfaFromQueue() {
+    const toStart = ffaQueue.splice(0, Math.min(ffaQueue.length, FfaConfig_1.FFA_CONFIG.maxPlayers));
+    ffaQueue.length = 0;
+    emitFfaLobbyToAll();
+    const dimension = (0, FfaMatch_manager_1.startFfaMatch)(toStart);
+    const match = (0, FfaMatch_manager_1.getFfaMatchByDimension)(dimension);
+    const matchData = {
+        mapId: match?.mapId ?? "ffa",
+        mapName: match?.mapName ?? "Free For All",
+        dimension,
+        scoreToWin: FfaConfig_1.FFA_CONFIG.scoreToWin,
+        leaderboard: toStart.map((p) => ({ id: p.id, name: p.name, score: 0, deaths: 0 }))
+    };
+    toStart.forEach((p) => {
+        if (mp.players.exists(p)) {
+            _api_1.RAGERP.cef.emit(p, "ffa", "setMatch", matchData);
+            _api_1.RAGERP.cef.startPage(p, "ffa_hud");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "ffa_hud");
+        }
+    });
+}
+function leaveFfaQueue(player) {
+    const idx = ffaQueue.findIndex((p) => p.id === player.id);
+    if (idx < 0)
+        return false;
+    ffaQueue.splice(idx, 1);
+    emitFfaLobbyToAll();
+    _api_1.RAGERP.cef.startPage(player, "mainmenu");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+    return true;
+}
+function onPlayerDisconnectFromFfaQueue(playerId) {
+    const idx = ffaQueue.findIndex((p) => p.id === playerId);
+    if (idx < 0)
+        return false;
+    ffaQueue.splice(idx, 1);
+    emitFfaLobbyToAll();
+    return true;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modes/ffa/FfaConfig.ts"
+/*!**********************************************!*\
+  !*** ./source/server/modes/ffa/FfaConfig.ts ***!
+  \**********************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.FFA_AMMO = exports.FFA_WEAPONS = exports.FFA_CONFIG = void 0;
+const Weapons_assets_1 = __webpack_require__(/*! @assets/Weapons.assets */ "./source/server/assets/Weapons.assets.ts");
+exports.FFA_CONFIG = {
+    maxPlayers: 8,
+    minPlayersToStart: 2,
+    scoreToWin: 20,
+    respawnDelaySeconds: 3
+};
+exports.FFA_WEAPONS = [Weapons_assets_1.weaponHash.assaultrifle, Weapons_assets_1.weaponHash.pistol50];
+exports.FFA_AMMO = 999;
+
+
+/***/ },
+
+/***/ "./source/server/modes/ffa/FfaMatch.manager.ts"
+/*!*****************************************************!*\
+  !*** ./source/server/modes/ffa/FfaMatch.manager.ts ***!
+  \*****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isPlayerInFfaMatch = isPlayerInFfaMatch;
+exports.getFfaMatchByPlayer = getFfaMatchByPlayer;
+exports.getFfaMatchByDimension = getFfaMatchByDimension;
+exports.startFfaMatch = startFfaMatch;
+exports.handleFfaDeath = handleFfaDeath;
+exports.leaveFfaMatch = leaveFfaMatch;
+/**
+ * FFA (Free For All) match manager. No teams, respawn on death, first to score wins.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const QueueManager_1 = __webpack_require__(/*! @modules/matchmaking/QueueManager */ "./source/server/modules/matchmaking/QueueManager.ts");
+const FfaConfig_1 = __webpack_require__(/*! ./FfaConfig */ "./source/server/modes/ffa/FfaConfig.ts");
+const ArenaPresets_asset_1 = __webpack_require__(/*! ../hopouts/ArenaPresets.asset */ "./source/server/modes/hopouts/ArenaPresets.asset.ts");
+const ffaMatches = new Map();
+const ffaPlayerToMatch = new Map();
+function getSpawnPoints(preset) {
+    const points = [];
+    if (preset.redSpawn)
+        points.push(preset.redSpawn);
+    if (preset.blueSpawn)
+        points.push(preset.blueSpawn);
+    if (preset.center)
+        points.push({ ...preset.center, heading: 0 });
+    if (preset.safeNodes?.length) {
+        preset.safeNodes.forEach((n) => points.push({ ...n, heading: 0 }));
+    }
+    return points.length > 0 ? points : [{ x: 0, y: 0, z: 70, heading: 0 }];
+}
+function pickRandomSpawn(match) {
+    const pts = match.spawnPoints;
+    return pts[Math.floor(Math.random() * pts.length)];
+}
+function getAlivePlayers(match) {
+    const result = [];
+    for (const p of match.players) {
+        const mp_ = mp.players.at(p.id);
+        if (mp_ && mp.players.exists(mp_) && mp_.health > 0)
+            result.push(mp_);
+    }
+    return result;
+}
+function emitToAll(match, event, data) {
+    match.players.forEach((p) => {
+        const mp_ = mp.players.at(p.id);
+        if (mp_ && mp.players.exists(mp_)) {
+            _api_1.RAGERP.cef.emit(mp_, "ffa", event, data);
+        }
+    });
+}
+function emitFfaUpdate(match) {
+    const leaderboard = match.players
+        .map((p) => ({ id: p.id, name: p.name, score: p.score, deaths: p.deaths }))
+        .sort((a, b) => b.score - a.score);
+    emitToAll(match, "matchUpdate", {
+        state: match.state,
+        scoreToWin: match.scoreToWin,
+        leaderboard,
+        topPlayer: leaderboard[0] ?? null
+    });
+}
+function giveFfaWeapons(player) {
+    player.removeAllWeapons();
+    FfaConfig_1.FFA_WEAPONS.forEach((hash) => {
+        player.giveWeaponEx(hash, FfaConfig_1.FFA_AMMO, 30);
+    });
+}
+function spawnFfaPlayer(player, match) {
+    const spawn = pickRandomSpawn(match);
+    player.dimension = match.dimension;
+    player.spawn(new mp.Vector3(spawn.x, spawn.y, spawn.z));
+    player.heading = spawn.heading ?? 0;
+    player.health = 100;
+    player.armour = 100;
+    player.setVariable("arenaEffectiveHp", 100);
+    player.setVariable("isDead", false);
+    if (player.character) {
+        player.character.deathState = 0 /* RageShared.Players.Enums.DEATH_STATES.STATE_NONE */;
+        player.character.setStoreData(player, "isDead", false);
+    }
+    player.setOwnVariable("deathAnim", null);
+    player.stopScreenEffect("DeathFailMPIn");
+    giveFfaWeapons(player);
+    player.call("client::player:setVitals", [100, 100]);
+    player.call("client::arena:requestCollision", [spawn.x, spawn.y, spawn.z]);
+}
+function isPlayerInFfaMatch(player) {
+    return ffaPlayerToMatch.has(player.id);
+}
+function getFfaMatchByPlayer(player) {
+    const dim = ffaPlayerToMatch.get(player.id);
+    return dim !== undefined ? ffaMatches.get(dim) : undefined;
+}
+function getFfaMatchByDimension(dim) {
+    return ffaMatches.get(dim);
+}
+function startFfaMatch(players) {
+    const presets = (0, ArenaPresets_asset_1.getArenaPresets)();
+    const preset = presets.length > 0 ? presets[Math.floor(Math.random() * presets.length)] : null;
+    if (!preset) {
+        console.error("[FFA] No arena presets available");
+        return 0;
+    }
+    const dimension = (0, QueueManager_1.allocateDimension)();
+    const spawnPoints = getSpawnPoints(preset);
+    const match = {
+        dimension,
+        state: "active",
+        mapId: preset.id,
+        mapName: preset.name,
+        preset,
+        players: players.map((p) => ({
+            id: p.id,
+            name: p.name,
+            score: 0,
+            deaths: 0,
+            characterId: p.character?.id
+        })),
+        scoreToWin: FfaConfig_1.FFA_CONFIG.scoreToWin,
+        spawnPoints
+    };
+    ffaMatches.set(dimension, match);
+    players.forEach((p) => ffaPlayerToMatch.set(p.id, dimension));
+    players.forEach((p) => {
+        spawnFfaPlayer(p, match);
+        p.setVariable("arenaTeammateIds", []);
+        p.setVariable("currentTeam", undefined);
+    });
+    emitFfaUpdate(match);
+    return dimension;
+}
+/**
+ * Called when a player dies in FFA. Schedules respawn after delay.
+ * Returns true if death was handled (caller should not run other death logic).
+ */
+function handleFfaDeath(victim, killer) {
+    const match = getFfaMatchByPlayer(victim);
+    if (!match || match.state !== "active")
+        return false;
+    const victimData = match.players.find((p) => p.id === victim.id);
+    if (!victimData)
+        return false;
+    victimData.deaths++;
+    if (killer && mp.players.exists(killer)) {
+        const killerData = match.players.find((p) => p.id === killer.id);
+        if (killerData && killerData.id !== victim.id) {
+            killerData.score++;
+            if (killerData.score >= match.scoreToWin) {
+                endFfaMatch(match.dimension);
+                return true;
+            }
+        }
+    }
+    emitFfaUpdate(match);
+    setTimeout(() => {
+        const m = getFfaMatchByDimension(match.dimension);
+        if (!m || m.state !== "active")
+            return;
+        const p = mp.players.at(victim.id);
+        if (!p || !mp.players.exists(p))
+            return;
+        spawnFfaPlayer(p, m);
+        emitFfaUpdate(m);
+    }, FfaConfig_1.FFA_CONFIG.respawnDelaySeconds * 1000);
+    return true;
+}
+function endFfaMatch(dimension) {
+    const match = ffaMatches.get(dimension);
+    if (!match)
+        return;
+    if (match.state === "match_end")
+        return;
+    match.state = "match_end";
+    const sorted = [...match.players].sort((a, b) => b.score - a.score);
+    const winner = sorted[0];
+    match.players.forEach((p) => ffaPlayerToMatch.delete(p.id));
+    ffaMatches.delete(dimension);
+    const allPlayers = match.players
+        .map((p) => mp.players.at(p.id))
+        .filter((p) => !!p && mp.players.exists(p));
+    allPlayers.forEach((p) => {
+        p.dimension = 0;
+        p.removeAllWeapons();
+        p.call("client::player:freeze", [false]);
+        p.setVariable("arenaTeammateIds", []);
+        p.setVariable("currentTeam", undefined);
+        _api_1.RAGERP.cef.emit(p, "ffa", "matchEnd", {
+            winner: winner ? { id: winner.id, name: winner.name, score: winner.score } : null,
+            leaderboard: sorted.map((x) => ({ id: x.id, name: x.name, score: x.score, deaths: x.deaths }))
+        });
+    });
+    setTimeout(() => {
+        allPlayers.forEach((p) => {
+            if (mp.players.exists(p)) {
+                _api_1.RAGERP.cef.startPage(p, "mainmenu");
+                _api_1.RAGERP.cef.emit(p, "system", "setPage", "mainmenu");
+            }
+        });
+    }, 8000);
+}
+function leaveFfaMatch(player) {
+    const match = getFfaMatchByPlayer(player);
+    if (!match)
+        return false;
+    const idx = match.players.findIndex((p) => p.id === player.id);
+    if (idx >= 0)
+        match.players.splice(idx, 1);
+    ffaPlayerToMatch.delete(player.id);
+    player.dimension = 0;
+    player.removeAllWeapons();
+    player.setVariable("arenaTeammateIds", []);
+    player.setVariable("currentTeam", undefined);
+    _api_1.RAGERP.cef.startPage(player, "mainmenu");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+    _api_1.RAGERP.cef.emit(player, "ffa", "leftMatch", null);
+    if (match.players.length === 0) {
+        ffaMatches.delete(match.dimension);
+    }
+    else {
+        emitFfaUpdate(match);
+    }
+    return true;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modes/gungame/GunGame.module.ts"
+/*!*******************************************************!*\
+  !*** ./source/server/modes/gungame/GunGame.module.ts ***!
+  \*******************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.joinGunGameQueue = joinGunGameQueue;
+exports.leaveGunGameQueue = leaveGunGameQueue;
+exports.onPlayerDisconnectFromGunGameQueue = onPlayerDisconnectFromGunGameQueue;
+/**
+ * Gun Game queue and launch flow. Separate from Hopouts and FFA.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const Weapons_assets_1 = __webpack_require__(/*! @assets/Weapons.assets */ "./source/server/assets/Weapons.assets.ts");
+const GunGameMatch_manager_1 = __webpack_require__(/*! ./GunGameMatch.manager */ "./source/server/modes/gungame/GunGameMatch.manager.ts");
+const GunGameConfig_1 = __webpack_require__(/*! ./GunGameConfig */ "./source/server/modes/gungame/GunGameConfig.ts");
+function getWeaponDisplayName(hash) {
+    const name = Weapons_assets_1.weaponUnhash[hash];
+    return (name ?? `weapon_${hash}`).replace("weapon_", "").replace(/_/g, " ");
+}
+const gunGameQueue = [];
+function getQueueForPlayer(player) {
+    if (gunGameQueue.some((p) => p.id === player.id))
+        return gunGameQueue;
+    return null;
+}
+function emitGunGameLobbyToAll() {
+    const data = {
+        players: gunGameQueue.map((p) => ({ id: p.id, name: p.name })),
+        needed: GunGameConfig_1.GUNGAME_CONFIG.minPlayersToStart,
+        maxPlayers: GunGameConfig_1.GUNGAME_CONFIG.maxPlayers
+    };
+    gunGameQueue.forEach((p) => {
+        if (mp.players.exists(p)) {
+            _api_1.RAGERP.cef.emit(p, "gungame", "setLobby", data);
+        }
+    });
+}
+function joinGunGameQueue(player) {
+    if (!player.character) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "No character loaded.");
+        return false;
+    }
+    if ((0, GunGameMatch_manager_1.isPlayerInGunGameMatch)(player)) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in a match.");
+        return false;
+    }
+    if (getQueueForPlayer(player)) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in Gun Game queue.");
+        return false;
+    }
+    gunGameQueue.push(player);
+    _api_1.RAGERP.cef.startPage(player, "gungame_lobby");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "gungame_lobby");
+    emitGunGameLobbyToAll();
+    if (gunGameQueue.length >= GunGameConfig_1.GUNGAME_CONFIG.minPlayersToStart) {
+        startGunGameFromQueue();
+    }
+    return true;
+}
+function startGunGameFromQueue() {
+    const toStart = gunGameQueue.splice(0, Math.min(gunGameQueue.length, GunGameConfig_1.GUNGAME_CONFIG.maxPlayers));
+    gunGameQueue.length = 0;
+    emitGunGameLobbyToAll();
+    const dimension = (0, GunGameMatch_manager_1.startGunGameMatch)(toStart);
+    const match = (0, GunGameMatch_manager_1.getGunGameMatchByDimension)(dimension);
+    const weaponOrderNames = (match?.weaponOrder ?? []).map(getWeaponDisplayName);
+    const firstWeapon = weaponOrderNames[0] ?? "—";
+    const matchData = {
+        mapId: match?.mapId ?? "gungame",
+        mapName: match?.mapName ?? "Gun Game",
+        dimension,
+        totalTiers: match?.totalTiers ?? 0,
+        weaponOrder: weaponOrderNames,
+        leaderboard: toStart.map((p) => ({
+            id: p.id,
+            name: p.name,
+            tier: 0,
+            kills: 0,
+            deaths: 0,
+            weaponName: firstWeapon
+        }))
+    };
+    toStart.forEach((p) => {
+        if (mp.players.exists(p)) {
+            _api_1.RAGERP.cef.emit(p, "gungame", "setMatch", matchData);
+            _api_1.RAGERP.cef.startPage(p, "gungame_hud");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "gungame_hud");
+        }
+    });
+}
+function leaveGunGameQueue(player) {
+    const idx = gunGameQueue.findIndex((p) => p.id === player.id);
+    if (idx < 0)
+        return false;
+    gunGameQueue.splice(idx, 1);
+    emitGunGameLobbyToAll();
+    _api_1.RAGERP.cef.startPage(player, "mainmenu");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+    return true;
+}
+function onPlayerDisconnectFromGunGameQueue(playerId) {
+    const idx = gunGameQueue.findIndex((p) => p.id === playerId);
+    if (idx < 0)
+        return false;
+    gunGameQueue.splice(idx, 1);
+    emitGunGameLobbyToAll();
+    return true;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modes/gungame/GunGameConfig.ts"
+/*!******************************************************!*\
+  !*** ./source/server/modes/gungame/GunGameConfig.ts ***!
+  \******************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GUNGAME_AMMO = exports.GUNGAME_WEAPON_POOL = exports.GUNGAME_CONFIG = void 0;
+exports.shuffleWeaponPool = shuffleWeaponPool;
+const Weapons_assets_1 = __webpack_require__(/*! @assets/Weapons.assets */ "./source/server/assets/Weapons.assets.ts");
+exports.GUNGAME_CONFIG = {
+    maxPlayers: 8,
+    minPlayersToStart: 2,
+    respawnDelaySeconds: 3
+};
+/**
+ * Curated Gun Game weapon pool. Sensible PvP weapons only.
+ * Excludes: explosives, heavy grief (minigun, railgun), utility (stungun, flaregun), non-combat.
+ * Order here is irrelevant — shuffled at match start.
+ */
+exports.GUNGAME_WEAPON_POOL = [
+    Weapons_assets_1.weaponHash.knife,
+    Weapons_assets_1.weaponHash.hatchet,
+    Weapons_assets_1.weaponHash.dagger,
+    Weapons_assets_1.weaponHash.machete,
+    Weapons_assets_1.weaponHash.bat,
+    Weapons_assets_1.weaponHash.crowbar,
+    Weapons_assets_1.weaponHash.pistol,
+    Weapons_assets_1.weaponHash.combatpistol,
+    Weapons_assets_1.weaponHash.pistol50,
+    Weapons_assets_1.weaponHash.heavypistol,
+    Weapons_assets_1.weaponHash.revolver,
+    Weapons_assets_1.weaponHash.snspistol,
+    Weapons_assets_1.weaponHash.microsmg,
+    Weapons_assets_1.weaponHash.smg,
+    Weapons_assets_1.weaponHash.assaultsmg,
+    Weapons_assets_1.weaponHash.combatpdw,
+    Weapons_assets_1.weaponHash.machinepistol,
+    Weapons_assets_1.weaponHash.pumpshotgun,
+    Weapons_assets_1.weaponHash.sawnoffshotgun,
+    Weapons_assets_1.weaponHash.bullpupshotgun,
+    Weapons_assets_1.weaponHash.assaultshotgun,
+    Weapons_assets_1.weaponHash.assaultrifle,
+    Weapons_assets_1.weaponHash.carbinerifle,
+    Weapons_assets_1.weaponHash.specialcarbine,
+    Weapons_assets_1.weaponHash.bullpuprifle,
+    Weapons_assets_1.weaponHash.advancedrifle,
+    Weapons_assets_1.weaponHash.mg,
+    Weapons_assets_1.weaponHash.combatmg,
+    Weapons_assets_1.weaponHash.sniperrifle,
+    Weapons_assets_1.weaponHash.heavysniper,
+    Weapons_assets_1.weaponHash.marksmanrifle
+];
+exports.GUNGAME_AMMO = 999;
+/** Fisher-Yates shuffle. Returns new array. */
+function shuffleWeaponPool(pool) {
+    const out = [...pool];
+    for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modes/gungame/GunGameMatch.manager.ts"
+/*!*************************************************************!*\
+  !*** ./source/server/modes/gungame/GunGameMatch.manager.ts ***!
+  \*************************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isPlayerInGunGameMatch = isPlayerInGunGameMatch;
+exports.getGunGameMatchByPlayer = getGunGameMatchByPlayer;
+exports.getGunGameMatchByDimension = getGunGameMatchByDimension;
+exports.startGunGameMatch = startGunGameMatch;
+exports.handleGunGameDeath = handleGunGameDeath;
+exports.leaveGunGameMatch = leaveGunGameMatch;
+/**
+ * Gun Game match manager. No teams, respawn on death, kill advances tier, first to complete final tier wins.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const QueueManager_1 = __webpack_require__(/*! @modules/matchmaking/QueueManager */ "./source/server/modules/matchmaking/QueueManager.ts");
+const Weapons_assets_1 = __webpack_require__(/*! @assets/Weapons.assets */ "./source/server/assets/Weapons.assets.ts");
+const GunGameConfig_1 = __webpack_require__(/*! ./GunGameConfig */ "./source/server/modes/gungame/GunGameConfig.ts");
+const ArenaPresets_asset_1 = __webpack_require__(/*! ../hopouts/ArenaPresets.asset */ "./source/server/modes/hopouts/ArenaPresets.asset.ts");
+const gunGameMatches = new Map();
+const gunGamePlayerToMatch = new Map();
+function getSpawnPoints(preset) {
+    const points = [];
+    if (preset.redSpawn)
+        points.push(preset.redSpawn);
+    if (preset.blueSpawn)
+        points.push(preset.blueSpawn);
+    if (preset.center)
+        points.push({ ...preset.center, heading: 0 });
+    if (preset.safeNodes?.length) {
+        preset.safeNodes.forEach((n) => points.push({ ...n, heading: 0 }));
+    }
+    return points.length > 0 ? points : [{ x: 0, y: 0, z: 70, heading: 0 }];
+}
+function pickRandomSpawn(match) {
+    const pts = match.spawnPoints;
+    return pts[Math.floor(Math.random() * pts.length)];
+}
+function getWeaponName(hash) {
+    const name = Weapons_assets_1.weaponUnhash[hash];
+    if (!name)
+        return `weapon_${hash}`;
+    return name.replace("weapon_", "").replace(/_/g, " ");
+}
+function emitToAll(match, event, data) {
+    match.players.forEach((p) => {
+        const mp_ = mp.players.at(p.id);
+        if (mp_ && mp.players.exists(mp_)) {
+            _api_1.RAGERP.cef.emit(mp_, "gungame", event, data);
+        }
+    });
+}
+function buildLeaderboard(match) {
+    return match.players
+        .map((p) => ({
+        id: p.id,
+        name: p.name,
+        tier: p.tier,
+        kills: p.kills,
+        deaths: p.deaths,
+        weaponName: getWeaponName(match.weaponOrder[Math.min(p.tier, match.totalTiers - 1)])
+    }))
+        .sort((a, b) => b.tier - a.tier || b.kills - a.kills);
+}
+function emitGunGameUpdate(match) {
+    const leaderboard = buildLeaderboard(match);
+    const topPlayer = leaderboard[0] ?? null;
+    emitToAll(match, "matchUpdate", {
+        state: match.state,
+        totalTiers: match.totalTiers,
+        weaponOrder: match.weaponOrder.map((h) => getWeaponName(h)),
+        leaderboard,
+        topPlayer
+    });
+}
+function giveTierWeapon(player, match, playerData) {
+    player.removeAllWeapons();
+    const tier = Math.min(playerData.tier, match.totalTiers - 1);
+    const weaponHash = match.weaponOrder[tier];
+    player.giveWeaponEx(weaponHash, GunGameConfig_1.GUNGAME_AMMO, 30);
+}
+function spawnGunGamePlayer(player, match, playerData) {
+    const spawn = pickRandomSpawn(match);
+    player.dimension = match.dimension;
+    player.spawn(new mp.Vector3(spawn.x, spawn.y, spawn.z));
+    player.heading = spawn.heading ?? 0;
+    player.health = 100;
+    player.armour = 100;
+    player.setVariable("arenaEffectiveHp", 100);
+    player.setVariable("isDead", false);
+    if (player.character) {
+        player.character.deathState = 0 /* RageShared.Players.Enums.DEATH_STATES.STATE_NONE */;
+        player.character.setStoreData(player, "isDead", false);
+    }
+    player.setOwnVariable("deathAnim", null);
+    player.stopScreenEffect("DeathFailMPIn");
+    giveTierWeapon(player, match, playerData);
+    player.call("client::player:setVitals", [100, 100]);
+    player.call("client::arena:requestCollision", [spawn.x, spawn.y, spawn.z]);
+}
+function isPlayerInGunGameMatch(player) {
+    return gunGamePlayerToMatch.has(player.id);
+}
+function getGunGameMatchByPlayer(player) {
+    const dim = gunGamePlayerToMatch.get(player.id);
+    return dim !== undefined ? gunGameMatches.get(dim) : undefined;
+}
+function getGunGameMatchByDimension(dim) {
+    return gunGameMatches.get(dim);
+}
+function startGunGameMatch(players) {
+    const presets = (0, ArenaPresets_asset_1.getArenaPresets)();
+    const preset = presets.length > 0 ? presets[Math.floor(Math.random() * presets.length)] : null;
+    if (!preset) {
+        console.error("[GunGame] No arena presets available");
+        return 0;
+    }
+    const weaponOrder = (0, GunGameConfig_1.shuffleWeaponPool)(GunGameConfig_1.GUNGAME_WEAPON_POOL);
+    const dimension = (0, QueueManager_1.allocateDimension)();
+    const spawnPoints = getSpawnPoints(preset);
+    const match = {
+        dimension,
+        state: "active",
+        mapId: preset.id,
+        mapName: preset.name,
+        preset,
+        players: players.map((p) => ({
+            id: p.id,
+            name: p.name,
+            tier: 0,
+            kills: 0,
+            deaths: 0,
+            characterId: p.character?.id
+        })),
+        weaponOrder,
+        totalTiers: weaponOrder.length,
+        spawnPoints
+    };
+    gunGameMatches.set(dimension, match);
+    players.forEach((p) => gunGamePlayerToMatch.set(p.id, dimension));
+    players.forEach((p) => {
+        const playerData = match.players.find((x) => x.id === p.id);
+        spawnGunGamePlayer(p, match, playerData);
+        p.setVariable("arenaTeammateIds", []);
+        p.setVariable("currentTeam", undefined);
+    });
+    emitGunGameUpdate(match);
+    return dimension;
+}
+/**
+ * Called when a player dies in Gun Game. Killer advances tier. Victim respawns after delay.
+ * Returns true if death was handled.
+ */
+function handleGunGameDeath(victim, killer) {
+    const match = getGunGameMatchByPlayer(victim);
+    if (!match || match.state !== "active")
+        return false;
+    const victimData = match.players.find((p) => p.id === victim.id);
+    if (!victimData)
+        return false;
+    victimData.deaths++;
+    if (killer && mp.players.exists(killer)) {
+        const killerData = match.players.find((p) => p.id === killer.id);
+        if (killerData && killerData.id !== victim.id) {
+            killerData.kills++;
+            killerData.tier++;
+            if (killerData.tier >= match.totalTiers) {
+                endGunGameMatch(match.dimension);
+                return true;
+            }
+            const killerMp = mp.players.at(killer.id);
+            if (killerMp && mp.players.exists(killerMp)) {
+                giveTierWeapon(killerMp, match, killerData);
+            }
+        }
+    }
+    emitGunGameUpdate(match);
+    setTimeout(() => {
+        const m = getGunGameMatchByDimension(match.dimension);
+        if (!m || m.state !== "active")
+            return;
+        const p = mp.players.at(victim.id);
+        if (!p || !mp.players.exists(p))
+            return;
+        const pd = m.players.find((x) => x.id === p.id);
+        if (pd)
+            spawnGunGamePlayer(p, m, pd);
+        emitGunGameUpdate(m);
+    }, GunGameConfig_1.GUNGAME_CONFIG.respawnDelaySeconds * 1000);
+    return true;
+}
+function endGunGameMatch(dimension) {
+    const match = gunGameMatches.get(dimension);
+    if (!match)
+        return;
+    if (match.state === "match_end")
+        return;
+    match.state = "match_end";
+    const sorted = [...match.players].sort((a, b) => b.tier - a.tier || b.kills - a.kills);
+    const winner = sorted[0];
+    match.players.forEach((p) => gunGamePlayerToMatch.delete(p.id));
+    gunGameMatches.delete(dimension);
+    const allPlayers = match.players
+        .map((p) => mp.players.at(p.id))
+        .filter((p) => !!p && mp.players.exists(p));
+    allPlayers.forEach((p) => {
+        p.dimension = 0;
+        p.removeAllWeapons();
+        p.call("client::player:freeze", [false]);
+        p.setVariable("arenaTeammateIds", []);
+        p.setVariable("currentTeam", undefined);
+        _api_1.RAGERP.cef.emit(p, "gungame", "matchEnd", {
+            winner: winner ? { id: winner.id, name: winner.name, tier: winner.tier, kills: winner.kills } : null,
+            leaderboard: sorted.map((x) => ({
+                id: x.id,
+                name: x.name,
+                tier: x.tier,
+                kills: x.kills,
+                deaths: x.deaths
+            }))
+        });
+    });
+    setTimeout(() => {
+        allPlayers.forEach((p) => {
+            if (mp.players.exists(p)) {
+                _api_1.RAGERP.cef.startPage(p, "mainmenu");
+                _api_1.RAGERP.cef.emit(p, "system", "setPage", "mainmenu");
+            }
+        });
+    }, 8000);
+}
+function leaveGunGameMatch(player) {
+    const match = getGunGameMatchByPlayer(player);
+    if (!match)
+        return false;
+    const idx = match.players.findIndex((p) => p.id === player.id);
+    if (idx >= 0)
+        match.players.splice(idx, 1);
+    gunGamePlayerToMatch.delete(player.id);
+    player.dimension = 0;
+    player.removeAllWeapons();
+    player.setVariable("arenaTeammateIds", []);
+    player.setVariable("currentTeam", undefined);
+    _api_1.RAGERP.cef.startPage(player, "mainmenu");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+    _api_1.RAGERP.cef.emit(player, "gungame", "leftMatch", null);
+    if (match.players.length === 0) {
+        gunGameMatches.delete(match.dimension);
+    }
+    else {
+        emitGunGameUpdate(match);
+    }
+    return true;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modes/hopouts/Arena.module.ts"
+/*!*****************************************************!*\
+  !*** ./source/server/modes/hopouts/Arena.module.ts ***!
+  \*****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.joinQueue = joinQueue;
+exports.joinQueueWithParty = joinQueueWithParty;
+exports.removePartyFromQueue = removePartyFromQueue;
+exports.onPlayerDisconnectFromQueue = onPlayerDisconnectFromQueue;
+exports.leaveQueue = leaveQueue;
+exports.vote = vote;
+exports.acceptReadyCheck = acceptReadyCheck;
+exports.declineReadyCheck = declineReadyCheck;
+exports.getLobbyState = getLobbyState;
+exports.startSoloMatch = startSoloMatch;
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const ArenaPresets_asset_1 = __webpack_require__(/*! ./ArenaPresets.asset */ "./source/server/modes/hopouts/ArenaPresets.asset.ts");
+const ArenaMatch_manager_1 = __webpack_require__(/*! ./ArenaMatch.manager */ "./source/server/modes/hopouts/ArenaMatch.manager.ts");
+const ArenaConfig_1 = __webpack_require__(/*! ./ArenaConfig */ "./source/server/modes/hopouts/ArenaConfig.ts");
+const QueueManager_1 = __webpack_require__(/*! @modules/matchmaking/QueueManager */ "./source/server/modules/matchmaking/QueueManager.ts");
+const PartyManager_1 = __webpack_require__(/*! @modules/party/PartyManager */ "./source/server/modules/party/PartyManager.ts");
+__webpack_require__(/*! ../../arena/WeaponPresets.service */ "./source/server/arena/WeaponPresets.service.ts");
+const LOBBY_COUNTDOWN_SEC = 0;
+const VOTING_DURATION_SEC = 0;
+const READY_CHECK_DURATION_MS = 10000;
+const lobbyInstances = new Map();
+ArenaConfig_1.QUEUE_SIZES.forEach((size) => {
+    lobbyInstances.set(size, {
+        size,
+        lobbyPlayers: new Map(),
+        partyInLobby: new Map(),
+        lobbyState: "waiting",
+        countdownInterval: null,
+        votingInterval: null,
+        voteMaps: [],
+        voteEndsAt: 0,
+        pendingMatch: null
+    });
+});
+function getPlayerQueue(player) {
+    const info = (0, QueueManager_1.getQueueForPlayerInfo)(player);
+    return info ? lobbyInstances.get(info.size) ?? null : null;
+}
+function emitLobbyToAll(q) {
+    const baseData = {
+        state: q.lobbyState,
+        queueSize: q.size,
+        players: Array.from(q.lobbyPlayers.values()).map((p) => ({
+            id: p.player.id,
+            name: p.player.name,
+            ready: p.ready
+        })),
+        countdown: 0,
+        voteMaps: q.voteMaps.map((m) => ({ id: m.preset.id, name: m.preset.name, votes: m.votes })),
+        voteEndsAt: q.voteEndsAt
+    };
+    if ((q.lobbyState === "waiting" && q.countdownInterval) || q.lobbyState === "voting") {
+        baseData.countdown = Math.max(0, Math.ceil((q.voteEndsAt - Date.now()) / 1000));
+    }
+    const event = q.lobbyState === "voting" ? "setVoting" : "setLobby";
+    Array.from(q.lobbyPlayers.values()).forEach((lp) => {
+        const p = lp.player;
+        if (mp.players.exists(p)) {
+            const data = { ...baseData, myVote: lp.voteMapId ?? null };
+            _api_1.RAGERP.cef.emit(p, "arena", event, data);
+        }
+    });
+}
+function startCountdown(q) {
+    if (q.lobbyState !== "waiting" || q.countdownInterval)
+        return;
+    q.voteEndsAt = Date.now() + LOBBY_COUNTDOWN_SEC * 1000;
+    q.countdownInterval = setInterval(() => {
+        const remaining = Math.ceil((q.voteEndsAt - Date.now()) / 1000);
+        emitLobbyToAll(q);
+        if (remaining <= 0) {
+            if (q.countdownInterval)
+                clearInterval(q.countdownInterval);
+            q.countdownInterval = null;
+            startVoting(q);
+        }
+    }, 1000);
+    emitLobbyToAll(q);
+}
+function startVoting(q) {
+    q.lobbyState = "voting";
+    const presets = (0, ArenaPresets_asset_1.getArenaPresets)();
+    const preferredIds = new Set();
+    q.lobbyPlayers.forEach((lp) => {
+        if (lp.preferredMapId)
+            preferredIds.add(lp.preferredMapId);
+    });
+    let candidates = presets.filter((p) => preferredIds.has(p.id));
+    if (candidates.length >= 3) {
+        candidates = [...candidates].sort(() => Math.random() - 0.5).slice(0, 3);
+    }
+    else {
+        const remaining = presets.filter((p) => !preferredIds.has(p.id));
+        const shuffled = remaining.sort(() => Math.random() - 0.5);
+        candidates = candidates.concat(shuffled.slice(0, 3 - candidates.length));
+    }
+    q.voteMaps = candidates.map((p) => ({ preset: p, votes: 0 }));
+    q.voteEndsAt = Date.now() + VOTING_DURATION_SEC * 1000;
+    q.lobbyPlayers.forEach((lp) => {
+        lp.voteMapId = null;
+        if (lp.preferredMapId && q.voteMaps.some((m) => m.preset.id === lp.preferredMapId)) {
+            lp.voteMapId = lp.preferredMapId;
+        }
+    });
+    q.lobbyPlayers.forEach((lp) => {
+        if (!lp.voteMapId)
+            return;
+        const map = q.voteMaps.find((m) => m.preset.id === lp.voteMapId);
+        if (map)
+            map.votes++;
+    });
+    Array.from(q.lobbyPlayers.values()).forEach((lp) => {
+        const p = lp.player;
+        if (mp.players.exists(p)) {
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "arena_voting");
+        }
+    });
+    if (q.votingInterval)
+        clearInterval(q.votingInterval);
+    q.votingInterval = setInterval(() => {
+        const remaining = Math.ceil((q.voteEndsAt - Date.now()) / 1000);
+        emitLobbyToAll(q);
+        if (remaining <= 0) {
+            if (q.votingInterval)
+                clearInterval(q.votingInterval);
+            q.votingInterval = null;
+            startReadyCheck(q);
+        }
+    }, 1000);
+    emitLobbyToAll(q);
+}
+function startReadyCheck(q) {
+    q.lobbyState = "starting";
+    if (q.voteMaps.length === 0) {
+        Array.from(q.lobbyPlayers.values()).forEach((lp) => lp.player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "No arena locations available."));
+        resetQueue(q);
+        return;
+    }
+    let winner;
+    const maxVotes = Math.max(...q.voteMaps.map((m) => m.votes), 0);
+    const tied = q.voteMaps.filter((m) => m.votes === maxVotes);
+    winner = tied.length > 1 || maxVotes === 0
+        ? tied[Math.floor(Math.random() * tied.length)]?.preset ?? q.voteMaps[0].preset
+        : q.voteMaps.find((m) => m.votes === maxVotes)?.preset ?? q.voteMaps[0].preset;
+    const players = Array.from(q.lobbyPlayers.values()).map((lp) => lp.player);
+    const dim = (0, QueueManager_1.allocateDimension)();
+    const redTeam = [];
+    const blueTeam = [];
+    const groups = [];
+    const assigned = new Set();
+    q.partyInLobby.forEach((memberIds) => {
+        const group = [...memberIds].map((id) => mp.players.at(id)).filter((p) => !!p && mp.players.exists(p));
+        if (group.length > 0) {
+            groups.push(group);
+            group.forEach((p) => assigned.add(p.id));
+        }
+    });
+    players.forEach((p) => {
+        if (!assigned.has(p.id))
+            groups.push([p]);
+    });
+    groups.sort((a, b) => b.length - a.length);
+    for (const group of groups) {
+        const redSpace = q.size - redTeam.length;
+        const blueSpace = q.size - blueTeam.length;
+        if (redSpace >= group.length) {
+            group.forEach((p) => redTeam.push(p));
+        }
+        else if (blueSpace >= group.length) {
+            group.forEach((p) => blueTeam.push(p));
+        }
+        else if (redSpace >= blueSpace) {
+            group.forEach((p) => redTeam.push(p));
+        }
+        else {
+            group.forEach((p) => blueTeam.push(p));
+        }
+    }
+    const responses = new Map();
+    const allPlayerIds = [...redTeam, ...blueTeam].map((p) => p.id);
+    const timeoutId = setTimeout(() => {
+        if (q.pendingMatch)
+            cancelReadyCheck(q);
+    }, READY_CHECK_DURATION_MS);
+    q.pendingMatch = { q, winner, redTeam, blueTeam, dim, responses, timeoutId };
+    [...redTeam, ...blueTeam].forEach((p) => {
+        if (mp.players.exists(p)) {
+            _api_1.RAGERP.cef.emit(p, "match", "readyCheck", { mapName: winner.name, timeLeft: 10 });
+            _api_1.RAGERP.cef.startPage(p, "arena_readycheck");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "arena_readycheck");
+        }
+    });
+}
+function cancelReadyCheck(q) {
+    const pending = q.pendingMatch;
+    if (!pending)
+        return;
+    clearTimeout(pending.timeoutId);
+    q.pendingMatch = null;
+    q.lobbyState = "waiting";
+    q.voteMaps = [];
+    q.voteEndsAt = 0;
+    q.votingInterval = null;
+    q.countdownInterval = null;
+    Array.from(q.lobbyPlayers.values()).forEach((lp) => {
+        const p = lp.player;
+        if (mp.players.exists(p)) {
+            p.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Match cancelled. Returning to queue.");
+            _api_1.RAGERP.cef.startPage(p, "arena_lobby");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "arena_lobby");
+        }
+    });
+    emitLobbyToAll(q);
+    if ((0, QueueManager_1.isQueueFull)(q.size) && !q.countdownInterval)
+        startCountdown(q);
+}
+function proceedToMatch(pending) {
+    const { q, winner, redTeam, blueTeam, dim } = pending;
+    if (q.pendingMatch !== pending)
+        return;
+    clearTimeout(pending.timeoutId);
+    q.pendingMatch = null;
+    (0, ArenaMatch_manager_1.startMatch)(dim, winner, redTeam, blueTeam);
+    const matchData = {
+        mapId: winner.id,
+        mapName: winner.name,
+        queueSize: q.size,
+        redTeam: redTeam.map((p) => ({ id: p.id, name: p.name })),
+        blueTeam: blueTeam.map((p) => ({ id: p.id, name: p.name })),
+        dimension: dim,
+        redScore: 0,
+        blueScore: 0,
+        currentRound: 1,
+        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin,
+        timeLeft: ArenaConfig_1.ARENA_CONFIG.maxRoundTime
+    };
+    [...redTeam, ...blueTeam].forEach((p) => {
+        if (mp.players.exists(p)) {
+            _api_1.RAGERP.cef.emit(p, "arena", "setMatch", matchData);
+            _api_1.RAGERP.cef.startPage(p, "arena_hud");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "arena_hud");
+        }
+    });
+    redTeam.forEach((p) => {
+        if (mp.players.exists(p))
+            p.call("client::arena:setTeam", ["red"]);
+    });
+    blueTeam.forEach((p) => {
+        if (mp.players.exists(p))
+            p.call("client::arena:setTeam", ["blue"]);
+    });
+    resetQueue(q);
+}
+function resetQueue(q) {
+    (0, QueueManager_1.clearQueue)(q.size);
+    q.lobbyPlayers.clear();
+    q.partyInLobby.clear();
+    q.lobbyState = "waiting";
+    q.voteMaps = [];
+    q.voteEndsAt = 0;
+}
+function joinQueue(player, size = 2, preferredMapId) {
+    if (!player.character) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "No character loaded.");
+        return false;
+    }
+    if ((0, ArenaMatch_manager_1.isPlayerInArenaMatch)(player)) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in a match.");
+        return false;
+    }
+    if (getPlayerQueue(player)) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Already in a queue.");
+        return false;
+    }
+    const q = lobbyInstances.get(size);
+    if (!q) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Invalid queue size.");
+        return false;
+    }
+    (0, QueueManager_1.addPlayer)(player, size);
+    q.lobbyPlayers.set(player.id, { player, ready: false, voteMapId: null, preferredMapId: preferredMapId ?? null });
+    const neededPlayers = size * 2;
+    if ((0, QueueManager_1.isQueueFull)(size) && !q.countdownInterval) {
+        startCountdown(q);
+    }
+    else {
+        const data = {
+            state: "waiting",
+            queueSize: q.size,
+            players: Array.from(q.lobbyPlayers.values()).map((p) => ({ id: p.player.id, name: p.player.name, ready: p.ready })),
+            countdown: 0,
+            voteMaps: [],
+            voteEndsAt: 0,
+            myVote: null
+        };
+        _api_1.RAGERP.cef.emit(player, "arena", "setLobby", data);
+    }
+    emitLobbyToAll(q);
+    return true;
+}
+function joinQueueWithParty(leader, size = 2, preferredMapId) {
+    const party = (0, PartyManager_1.getPartyByPlayer)(leader);
+    if (!party) {
+        leader.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "You are not in a party.");
+        return false;
+    }
+    if (!(0, PartyManager_1.isLeader)(leader)) {
+        leader.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Only the party leader can queue.");
+        return false;
+    }
+    const canQueue = (0, PartyManager_1.canPartyQueue)(party.partyId, size);
+    if (!canQueue.ok) {
+        leader.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, canQueue.reason ?? "Cannot queue.");
+        return false;
+    }
+    const q = lobbyInstances.get(size);
+    if (!q) {
+        leader.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Invalid queue size.");
+        return false;
+    }
+    const members = (0, PartyManager_1.getPartyMemberIds)(party.partyId).map((id) => mp.players.at(id)).filter((p) => !!p && mp.players.exists(p));
+    if (!(0, QueueManager_1.addPlayers)(members, size)) {
+        leader.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Could not add party to queue.");
+        return false;
+    }
+    const memberIds = new Set(members.map((p) => p.id));
+    q.partyInLobby.set(party.partyId, memberIds);
+    members.forEach((p) => {
+        q.lobbyPlayers.set(p.id, { player: p, ready: false, voteMapId: null, preferredMapId: preferredMapId ?? null });
+    });
+    if ((0, QueueManager_1.isQueueFull)(size) && !q.countdownInterval) {
+        startCountdown(q);
+    }
+    emitLobbyToAll(q);
+    return true;
+}
+function removePartyFromQueue(partyId) {
+    let q = null;
+    for (const inst of lobbyInstances.values()) {
+        if (inst.partyInLobby.has(partyId)) {
+            q = inst;
+            break;
+        }
+    }
+    if (!q)
+        return false;
+    const memberIds = q.partyInLobby.get(partyId);
+    const toRemove = [...memberIds];
+    q.partyInLobby.delete(partyId);
+    (0, QueueManager_1.removePlayers)(toRemove, q.size);
+    toRemove.forEach((id) => q.lobbyPlayers.delete(id));
+    toRemove.forEach((id) => {
+        const p = mp.players.at(id);
+        if (p && mp.players.exists(p)) {
+            _api_1.RAGERP.cef.startPage(p, "mainmenu");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "mainmenu");
+        }
+    });
+    const neededPlayers = q.size * 2;
+    if (q.lobbyPlayers.size < neededPlayers && q.countdownInterval) {
+        clearInterval(q.countdownInterval);
+        q.countdownInterval = null;
+    }
+    emitLobbyToAll(q);
+    if (process.env.DEBUG_MODE)
+        console.log(`[Arena] Queue removal: party ${partyId} removed from size ${q.size}`);
+    return true;
+}
+/**
+ * Called when a player disconnects while in queue. Removes them (and their party if any)
+ * from the lobby and sends remaining members to main menu.
+ * Also cancels ready check if the player was in a pending match.
+ */
+function onPlayerDisconnectFromQueue(playerId) {
+    for (const inst of lobbyInstances.values()) {
+        if (inst.pendingMatch) {
+            const { redTeam, blueTeam } = inst.pendingMatch;
+            if ([...redTeam, ...blueTeam].some((p) => p.id === playerId)) {
+                cancelReadyCheck(inst);
+                break;
+            }
+        }
+    }
+    let q = null;
+    for (const inst of lobbyInstances.values()) {
+        if (inst.lobbyPlayers.has(playerId)) {
+            q = inst;
+            break;
+        }
+    }
+    if (!q)
+        return false;
+    let toRemove = [playerId];
+    for (const [partyId, memberIds] of q.partyInLobby) {
+        if (memberIds.has(playerId)) {
+            toRemove = [...memberIds];
+            q.partyInLobby.delete(partyId);
+            break;
+        }
+    }
+    (0, QueueManager_1.removePlayers)(toRemove, q.size);
+    toRemove.forEach((id) => q.lobbyPlayers.delete(id));
+    toRemove.forEach((id) => {
+        const p = mp.players.at(id);
+        if (p && mp.players.exists(p) && id !== playerId) {
+            _api_1.RAGERP.cef.startPage(p, "mainmenu");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "mainmenu");
+        }
+    });
+    const neededPlayers = q.size * 2;
+    const currentCount = q.lobbyPlayers.size;
+    if (currentCount < neededPlayers && q.countdownInterval) {
+        clearInterval(q.countdownInterval);
+        q.countdownInterval = null;
+    }
+    emitLobbyToAll(q);
+    if (process.env.DEBUG_MODE)
+        console.log(`[Arena] Queue removal (disconnect): player ${playerId}, size ${q.size}`);
+    return true;
+}
+function leaveQueue(player) {
+    const q = getPlayerQueue(player);
+    if (!q)
+        return false;
+    if (!q.lobbyPlayers.has(player.id))
+        return false;
+    let toRemove = [player.id];
+    for (const [partyId, memberIds] of q.partyInLobby) {
+        if (memberIds.has(player.id)) {
+            toRemove = [...memberIds];
+            q.partyInLobby.delete(partyId);
+            break;
+        }
+    }
+    (0, QueueManager_1.removePlayers)(toRemove, q.size);
+    toRemove.forEach((id) => q.lobbyPlayers.delete(id));
+    toRemove.forEach((id) => {
+        const p = mp.players.at(id);
+        if (p && mp.players.exists(p) && id !== player.id) {
+            _api_1.RAGERP.cef.startPage(p, "mainmenu");
+            _api_1.RAGERP.cef.emit(p, "system", "setPage", "mainmenu");
+        }
+    });
+    const neededPlayers = q.size * 2;
+    const currentCount = q.lobbyPlayers.size;
+    if (currentCount < neededPlayers && q.countdownInterval) {
+        clearInterval(q.countdownInterval);
+        q.countdownInterval = null;
+    }
+    emitLobbyToAll(q);
+    return true;
+}
+function vote(player, mapId) {
+    const q = getPlayerQueue(player);
+    if (!q || q.lobbyState !== "voting")
+        return false;
+    const lp = q.lobbyPlayers.get(player.id);
+    if (!lp)
+        return false;
+    const map = q.voteMaps.find((m) => m.preset.id === mapId);
+    if (!map)
+        return false;
+    if (lp.voteMapId) {
+        const prev = q.voteMaps.find((m) => m.preset.id === lp.voteMapId);
+        if (prev)
+            prev.votes--;
+    }
+    lp.voteMapId = mapId;
+    map.votes++;
+    emitLobbyToAll(q);
+    return true;
+}
+function getPendingMatchForPlayer(playerId) {
+    for (const inst of lobbyInstances.values()) {
+        if (inst.pendingMatch) {
+            const { redTeam, blueTeam } = inst.pendingMatch;
+            if ([...redTeam, ...blueTeam].some((p) => p.id === playerId))
+                return inst.pendingMatch;
+        }
+    }
+    return null;
+}
+function acceptReadyCheck(player) {
+    const pending = getPendingMatchForPlayer(player.id);
+    if (!pending)
+        return false;
+    pending.responses.set(player.id, "accept");
+    const allIds = [...pending.redTeam, ...pending.blueTeam].map((p) => p.id);
+    const allAccepted = allIds.every((id) => pending.responses.get(id) === "accept");
+    if (allAccepted)
+        proceedToMatch(pending);
+    return true;
+}
+function declineReadyCheck(player) {
+    const pending = getPendingMatchForPlayer(player.id);
+    if (!pending)
+        return false;
+    cancelReadyCheck(pending.q);
+    return true;
+}
+function getLobbyState(size) {
+    const q = lobbyInstances.get(size);
+    if (!q)
+        return { state: "waiting", playerCount: 0 };
+    return { state: q.lobbyState, playerCount: q.lobbyPlayers.size };
+}
+function startSoloMatch(player, presetId) {
+    if ((0, ArenaMatch_manager_1.isPlayerInArenaMatch)(player))
+        return false;
+    const presets = (0, ArenaPresets_asset_1.getArenaPresets)();
+    if (presets.length === 0)
+        return false;
+    const preset = presetId ? presets.find((p) => p.id === presetId) : presets[0];
+    if (!preset)
+        return false;
+    const dim = (0, QueueManager_1.allocateDimension)();
+    (0, ArenaMatch_manager_1.startMatch)(dim, preset, [player], []);
+    const matchData = {
+        mapId: preset.id,
+        mapName: preset.name,
+        queueSize: 2,
+        redTeam: [{ id: player.id, name: player.name }],
+        blueTeam: [],
+        dimension: dim,
+        redScore: 0,
+        blueScore: 0,
+        currentRound: 1,
+        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin,
+        timeLeft: ArenaConfig_1.ARENA_CONFIG.maxRoundTime
+    };
+    _api_1.RAGERP.cef.emit(player, "arena", "setMatch", matchData);
+    _api_1.RAGERP.cef.startPage(player, "arena_hud");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "arena_hud");
+    player.call("client::arena:setTeam", ["red"]);
+    return true;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modes/hopouts/ArenaConfig.ts"
+/*!****************************************************!*\
+  !*** ./source/server/modes/hopouts/ArenaConfig.ts ***!
+  \****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ARENA_AMMO = exports.ITEM_CONFIG = exports.ZONE_PHASES = exports.VEHICLE_POOL = exports.WEAPON_ROTATION = exports.QUEUE_SIZES = exports.ARENA_CONFIG = void 0;
+const Weapons_assets_1 = __webpack_require__(/*! @assets/Weapons.assets */ "./source/server/assets/Weapons.assets.ts");
+exports.ARENA_CONFIG = {
+    roundsToWin: 7,
+    warmupDuration: 4, // seconds before round starts
+    roundEndDelay: 3, // seconds between rounds
+    matchEndDelay: 8, // seconds before returning to lobby
+    startHealth: 100,
+    startArmor: 100,
+    maxRoundTime: 150, // 2.5 min per round max (zone aligns with timer)
+    /** Seconds a disconnected player still counts as alive for round resolution. Shorter than reconnect window. */
+    roundPresenceGraceSeconds: 15,
+};
+exports.QUEUE_SIZES = [1, 2, 3, 4, 5];
+exports.WEAPON_ROTATION = [
+    { name: "Pistol .50", weapons: [Weapons_assets_1.weaponHash.pistol50] },
+    { name: "Service Carbine + .50", weapons: [Weapons_assets_1.weaponHash.specialcarbine, Weapons_assets_1.weaponHash.pistol50] },
+    { name: "Bullpup + .50", weapons: [Weapons_assets_1.weaponHash.bullpuprifle, Weapons_assets_1.weaponHash.pistol50] },
+    { name: "Carbine MK II + .50", weapons: [Weapons_assets_1.weaponHash.carbinerifle_mk2, Weapons_assets_1.weaponHash.pistol50] },
+    { name: "Pump Shotgun + .50", weapons: [Weapons_assets_1.weaponHash.pumpshotgun, Weapons_assets_1.weaponHash.pistol50] },
+    { name: "Heavy Rifle + .50", weapons: [Weapons_assets_1.weaponHash.assaultrifle, Weapons_assets_1.weaponHash.pistol50] },
+];
+exports.VEHICLE_POOL = [
+    "sultan", "banshee", "drafter", "omnis", "kuruma", "revolter", "buffalo"
+];
+exports.ZONE_PHASES = [
+    { duration: 45, endRadius: 160, dps: 1 },
+    { duration: 35, endRadius: 110, dps: 2 },
+    { duration: 30, endRadius: 70, dps: 4 },
+    { duration: 25, endRadius: 35, dps: 7 },
+    { duration: 20, endRadius: 10, dps: 14 },
+];
+exports.ITEM_CONFIG = {
+    medkit: { castTime: 4000, heal: 100, maxHp: 100, countPerRound: 3 },
+    plate: { castTime: 5000, armor: 25, maxArmor: 100, countPerRound: 3 },
+};
+exports.ARENA_AMMO = 999;
+
+
+/***/ },
+
+/***/ "./source/server/modes/hopouts/ArenaMatch.manager.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modes/hopouts/ArenaMatch.manager.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isAliveInMatch = exports.getTeam = exports.isPlayerInArenaMatch = exports.getMatchByPlayer = exports.getMatchByDimension = void 0;
+exports.getSpectatableTeammates = getSpectatableTeammates;
+exports.startMatch = startMatch;
+exports.handleArenaDeath = handleArenaDeath;
+exports.handleZoneDeath = handleZoneDeath;
+exports.restoreReconnectingPlayer = restoreReconnectingPlayer;
+exports.handleMatchDisconnect = handleMatchDisconnect;
+exports.leaveMatch = leaveMatch;
+exports.endMatch = endMatch;
+exports.tickMatches = tickMatches;
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const Player_event_1 = __webpack_require__(/*! @events/Player.event */ "./source/server/serverevents/Player.event.ts");
+const ArenaConfig_1 = __webpack_require__(/*! ./ArenaConfig */ "./source/server/modes/hopouts/ArenaConfig.ts");
+const ZoneSystem_1 = __webpack_require__(/*! ./ZoneSystem */ "./source/server/modes/hopouts/ZoneSystem.ts");
+const WeaponPresets_service_1 = __webpack_require__(/*! ../../arena/WeaponPresets.service */ "./source/server/arena/WeaponPresets.service.ts");
+const StatsEvents_1 = __webpack_require__(/*! @modules/stats/StatsEvents */ "./source/server/modules/stats/StatsEvents.ts");
+const ProgressionManager_1 = __webpack_require__(/*! @modules/stats/ProgressionManager */ "./source/server/modules/stats/ProgressionManager.ts");
+const ChallengeManager_1 = __webpack_require__(/*! @modules/stats/ChallengeManager */ "./source/server/modules/stats/ChallengeManager.ts");
+const StatsManager_1 = __webpack_require__(/*! @modules/stats/StatsManager */ "./source/server/modules/stats/StatsManager.ts");
+const SeasonManager_1 = __webpack_require__(/*! @modules/seasons/SeasonManager */ "./source/server/modules/seasons/SeasonManager.ts");
+const MatchHistoryManager_1 = __webpack_require__(/*! @modules/stats/MatchHistoryManager */ "./source/server/modules/stats/MatchHistoryManager.ts");
+const MatchManager_1 = __webpack_require__(/*! @modules/matches/MatchManager */ "./source/server/modules/matches/MatchManager.ts");
+const ReconnectManager_1 = __webpack_require__(/*! @modules/matches/ReconnectManager */ "./source/server/modules/matches/ReconnectManager.ts");
+const DeathRecapTracker_1 = __webpack_require__(/*! @modules/combat/DeathRecapTracker */ "./source/server/modules/combat/DeathRecapTracker.ts");
+const Weapons_assets_1 = __webpack_require__(/*! @assets/Weapons.assets */ "./source/server/assets/Weapons.assets.ts");
+exports.getMatchByDimension = (MatchManager_1.getMatchByDimension);
+exports.getMatchByPlayer = (MatchManager_1.getMatchByPlayer);
+exports.isPlayerInArenaMatch = MatchManager_1.isPlayerInMatch;
+exports.getTeam = MatchManager_1.getTeam;
+exports.isAliveInMatch = MatchManager_1.isAliveInMatch;
+function getTeamPlayers(match, team) {
+    return team === "red" ? match.redTeam : match.blueTeam;
+}
+/** Players who count as alive for round resolution. Excludes disconnected players past round-presence grace. */
+function getAlivePlayers(match, team) {
+    const now = Date.now();
+    return getTeamPlayers(match, team).filter((p) => {
+        if (!p.alive)
+            return false;
+        if (!p.disconnected)
+            return true;
+        if (p.roundPresenceDeadline && now < p.roundPresenceDeadline)
+            return true;
+        return false;
+    });
+}
+/** Returns alive teammates for spectating. Excludes the given player. */
+function getSpectatableTeammates(playerId) {
+    const player = mp.players.at(playerId);
+    if (!player || !mp.players.exists(player))
+        return [];
+    const match = (0, exports.getMatchByPlayer)(player);
+    if (!match || match.state !== "active")
+        return [];
+    const team = (0, exports.getTeam)(match, playerId);
+    if (!team)
+        return [];
+    const alive = getAlivePlayers(match, team);
+    return alive
+        .filter((p) => p.id !== playerId)
+        .map((p) => ({ playerId: p.id, playerName: p.name }));
+}
+function pickRandomWeaponSet() {
+    const entry = ArenaConfig_1.WEAPON_ROTATION[Math.floor(Math.random() * ArenaConfig_1.WEAPON_ROTATION.length)];
+    return { name: entry.name, weapons: [...entry.weapons] };
+}
+function getZoneCenter(preset) {
+    const safe = preset.safeNodes;
+    if (safe && safe.length > 0) {
+        return safe[Math.floor(Math.random() * safe.length)];
+    }
+    return preset.center;
+}
+function giveRoundWeapons(player, weapons) {
+    player.removeAllWeapons();
+    player.call("client::recoil:reset");
+    weapons.forEach((hash) => {
+        player.giveWeaponEx(hash, ArenaConfig_1.ARENA_AMMO, 30);
+    });
+    (0, WeaponPresets_service_1.applyWeaponPresets)(player, weapons);
+    player.setVariable("weaponsOnBody", weapons);
+}
+function randomVehicleModel() {
+    return ArenaConfig_1.VEHICLE_POOL[Math.floor(Math.random() * ArenaConfig_1.VEHICLE_POOL.length)];
+}
+function spawnTeamVehicles(match, team, spawnPoint) {
+    const players = getTeamPlayers(match, team);
+    const vehicleCount = Math.ceil(players.length / 2);
+    for (let i = 0; i < vehicleCount; i++) {
+        const model = randomVehicleModel();
+        const offset = i * 6;
+        const heading = spawnPoint.heading ?? 0;
+        const rad = (heading * Math.PI) / 180;
+        const vx = spawnPoint.x + Math.sin(rad) * offset;
+        const vy = spawnPoint.y + Math.cos(rad) * offset;
+        try {
+            const veh = mp.vehicles.new(mp.joaat(model), new mp.Vector3(vx, vy, spawnPoint.z), {
+                heading,
+                dimension: match.dimension,
+                locked: false,
+                engine: true
+            });
+            match.vehicles.push(veh);
+        }
+        catch (e) {
+            console.error(`[Arena] Failed to spawn vehicle ${model}:`, e);
+        }
+    }
+}
+function destroyMatchVehicles(match) {
+    match.vehicles.forEach((veh) => {
+        try {
+            if (mp.vehicles.exists(veh))
+                veh.destroy();
+        }
+        catch {
+            /* ignore */
+        }
+    });
+    match.vehicles = [];
+}
+function getAllMatchPlayerMps(match) {
+    const ids = [...match.redTeam, ...match.blueTeam].map((p) => p.id);
+    const result = [];
+    ids.forEach((id) => {
+        const p = mp.players.at(id);
+        if (p && mp.players.exists(p))
+            result.push(p);
+    });
+    return result;
+}
+/** Set arenaTeammateIds and currentTeam for voice radio and /team chat during hopouts. */
+function setArenaVoiceAndTeam(match) {
+    getAllMatchPlayerMps(match).forEach((p) => {
+        const team = (0, exports.getTeam)(match, p.id);
+        if (!team)
+            return;
+        const teammates = getTeamPlayers(match, team).map((m) => m.id).filter((id) => id !== p.id);
+        p.setVariable("arenaTeammateIds", teammates);
+        p.setVariable("currentTeam", team);
+    });
+}
+/** Clear arena voice/team vars when leaving match. */
+function clearArenaVoiceAndTeam(player) {
+    player.setVariable("arenaTeammateIds", []);
+    player.setVariable("currentTeam", undefined);
+}
+function emitToAll(match, event, data) {
+    getAllMatchPlayerMps(match).forEach((p) => {
+        _api_1.RAGERP.cef.emit(p, "arena", event, data);
+    });
+}
+function buildMatchUpdate(match) {
+    const timeLeft = match.state === "active" ? Math.max(0, Math.ceil((match.roundEndsAt - Date.now()) / 1000)) : 0;
+    return {
+        state: match.state,
+        redScore: match.redScore,
+        blueScore: match.blueScore,
+        currentRound: match.currentRound,
+        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin,
+        weaponName: match.roundWeaponSet.name,
+        redAlive: getAlivePlayers(match, "red").length,
+        blueAlive: getAlivePlayers(match, "blue").length,
+        redTeam: match.redTeam.map((p) => {
+            const mp_ = mp.players.at(p.id);
+            const health = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.health)) : 0;
+            const armor = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.armour)) : 0;
+            return { id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, alive: p.alive, health, armor };
+        }),
+        blueTeam: match.blueTeam.map((p) => {
+            const mp_ = mp.players.at(p.id);
+            const health = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.health)) : 0;
+            const armor = mp_ && mp.players.exists(mp_) ? Math.max(0, Math.min(100, mp_.armour)) : 0;
+            return { id: p.id, name: p.name, kills: p.kills, deaths: p.deaths, alive: p.alive, health, armor };
+        }),
+        timeLeft
+    };
+}
+function emitMatchUpdate(match) {
+    emitToAll(match, "matchUpdate", buildMatchUpdate(match));
+}
+function emitKillFeed(match, killerId, killerName, victimId, victimName, weaponHash, weaponName, headshot = false) {
+    emitToAll(match, "killFeed", {
+        killerId,
+        killerName,
+        victimId,
+        victimName,
+        weaponHash,
+        weaponName,
+        headshot
+    });
+}
+function emitAliveCount(match) {
+    emitToAll(match, "aliveCount", {
+        redAlive: getAlivePlayers(match, "red").length,
+        blueAlive: getAlivePlayers(match, "blue").length
+    });
+}
+/** Emit lastAlive when one team has exactly 1 alive and the other has >1. Fires once per round. */
+function checkAndEmitLastAlive(match) {
+    if (match.state !== "active" || match.lastAliveEmittedThisRound)
+        return;
+    const redAlive = getAlivePlayers(match, "red");
+    const blueAlive = getAlivePlayers(match, "blue");
+    if (redAlive.length === 1 && blueAlive.length > 1) {
+        const last = redAlive[0];
+        match.lastAliveEmittedThisRound = true;
+        emitToAll(match, "lastAlive", {
+            playerId: last.id,
+            playerName: last.name,
+            team: "red",
+            enemiesRemaining: blueAlive.length
+        });
+    }
+    else if (redAlive.length > 1 && blueAlive.length === 1) {
+        const last = blueAlive[0];
+        match.lastAliveEmittedThisRound = true;
+        emitToAll(match, "lastAlive", {
+            playerId: last.id,
+            playerName: last.name,
+            team: "blue",
+            enemiesRemaining: redAlive.length
+        });
+    }
+}
+function emitRoundResult(match, roundWinner) {
+    const winnerTeam = roundWinner === "draw" ? "draw" : roundWinner;
+    const payload = { winnerTeam: winnerTeam };
+    if (roundWinner !== "draw") {
+        const aliveWinners = getAlivePlayers(match, roundWinner);
+        if (aliveWinners.length === 1) {
+            const lastAlive = aliveWinners[0];
+            if (lastAlive.roundKills >= 2) {
+                payload.clutch = true;
+                payload.winningPlayerId = lastAlive.id;
+                payload.winningPlayerName = lastAlive.name;
+                payload.remainingEnemies = lastAlive.roundKills;
+                if (lastAlive.characterId) {
+                    lastAlive.clutchCount = (lastAlive.clutchCount ?? 0) + 1;
+                    (0, ProgressionManager_1.applyClutchXp)(lastAlive.characterId, match.dimension).catch((err) => console.error("[Progression] applyClutchXp failed:", err));
+                    (0, ChallengeManager_1.incrementChallengeProgress)(lastAlive.characterId, "win_clutch", 1).catch((err) => console.error("[Challenges] increment win_clutch failed:", err));
+                }
+            }
+        }
+    }
+    emitToAll(match, "roundResult", payload);
+}
+function spawnPlayerAtArena(player, spawn, dimension) {
+    player.dimension = dimension;
+    player.spawn(new mp.Vector3(spawn.x, spawn.y, spawn.z));
+    player.heading = spawn.heading ?? 0;
+    player.health = 100;
+    player.armour = 100;
+    player.call("client::arena:requestCollision", [spawn.x, spawn.y, spawn.z]);
+}
+function resetPlayerArenaState(player) {
+    (0, Player_event_1.stopSpectate)(player);
+    player.setVariable("isDead", false);
+    if (player.character) {
+        player.character.deathState = 0 /* RageShared.Players.Enums.DEATH_STATES.STATE_NONE */;
+        player.character.setStoreData(player, "isDead", false);
+    }
+    player.setOwnVariable("deathAnim", null);
+    player.stopScreenEffect("DeathFailMPIn");
+}
+function startMatch(dimension, preset, redTeam, blueTeam) {
+    const firstWeaponSet = pickRandomWeaponSet();
+    const match = {
+        dimension,
+        mapId: preset.id,
+        mapName: preset.name,
+        state: "warmup",
+        redTeam: redTeam.map((p) => ({
+            id: p.id,
+            name: p.name,
+            alive: true,
+            kills: 0,
+            deaths: 0,
+            roundKills: 0,
+            headshotKills: 0,
+            clutchCount: 0,
+            characterId: p.character?.id
+        })),
+        blueTeam: blueTeam.map((p) => ({
+            id: p.id,
+            name: p.name,
+            alive: true,
+            kills: 0,
+            deaths: 0,
+            roundKills: 0,
+            headshotKills: 0,
+            clutchCount: 0,
+            characterId: p.character?.id
+        })),
+        redScore: 0,
+        blueScore: 0,
+        currentRound: 1,
+        matchEndsAt: 0,
+        roundEndsAt: 0,
+        preset,
+        vehicles: [],
+        roundWeaponSet: firstWeaponSet
+    };
+    (0, MatchManager_1.registerMatch)(match);
+    (0, ProgressionManager_1.clearMatchXpResults)(dimension);
+    beginRound(match);
+}
+function beginRound(match) {
+    match.state = "warmup";
+    match.lastAliveEmittedThisRound = false;
+    destroyMatchVehicles(match);
+    match.redTeam.forEach((p) => (p.alive = true));
+    match.blueTeam.forEach((p) => (p.alive = true));
+    match.roundWeaponSet = pickRandomWeaponSet();
+    const weapons = match.roundWeaponSet.weapons;
+    const redSpawn = match.preset.redSpawn;
+    const blueSpawn = match.preset.blueSpawn;
+    const medkits = ArenaConfig_1.ITEM_CONFIG.medkit.countPerRound;
+    const plates = ArenaConfig_1.ITEM_CONFIG.plate.countPerRound;
+    match.redTeam.forEach((mp_) => {
+        const p = mp.players.at(mp_.id);
+        if (p && mp.players.exists(p)) {
+            resetPlayerArenaState(p);
+            spawnPlayerAtArena(p, redSpawn, match.dimension);
+            p.call("client::player:freeze", [true]);
+            giveRoundWeapons(p, weapons);
+            p.setVariable("arenaMedkits", medkits);
+            p.setVariable("arenaPlates", plates);
+            p.setVariable("arenaCastActive", false);
+            p.setVariable("arenaEffectiveHp", 100);
+            _api_1.RAGERP.cef.emit(p, "arena", "itemCounts", { medkits, plates });
+            p.call("client::arena:setTeam", ["red"]);
+        }
+    });
+    match.blueTeam.forEach((mp_) => {
+        const p = mp.players.at(mp_.id);
+        if (p && mp.players.exists(p)) {
+            resetPlayerArenaState(p);
+            spawnPlayerAtArena(p, blueSpawn, match.dimension);
+            p.call("client::player:freeze", [true]);
+            giveRoundWeapons(p, weapons);
+            p.setVariable("arenaMedkits", medkits);
+            p.setVariable("arenaPlates", plates);
+            p.setVariable("arenaCastActive", false);
+            p.setVariable("arenaEffectiveHp", 100);
+            _api_1.RAGERP.cef.emit(p, "arena", "itemCounts", { medkits, plates });
+            p.call("client::arena:setTeam", ["blue"]);
+        }
+    });
+    spawnTeamVehicles(match, "red", match.preset.redCar);
+    spawnTeamVehicles(match, "blue", match.preset.blueCar);
+    emitToAll(match, "roundStart", {
+        round: match.currentRound,
+        weaponName: match.roundWeaponSet.name,
+        warmupTime: ArenaConfig_1.ARENA_CONFIG.warmupDuration,
+        redScore: match.redScore,
+        blueScore: match.blueScore,
+        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin
+    });
+    emitAliveCount(match);
+    emitMatchUpdate(match);
+    const zoneCenter = getZoneCenter(match.preset);
+    match.zoneCenter = zoneCenter;
+    const cx = Number(zoneCenter?.x ?? match.preset.center?.x ?? 0);
+    const cy = Number(zoneCenter?.y ?? match.preset.center?.y ?? 0);
+    const initRadius = 200;
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || initRadius <= 0) {
+        console.warn("[Hopouts] Invalid zone center, using preset center");
+    }
+    getAllMatchPlayerMps(match).forEach((p) => {
+        p.call("client::arena:zoneInit", [cx, cy, initRadius]);
+    });
+    setArenaVoiceAndTeam(match);
+    (0, ZoneSystem_1.startZone)(match.dimension, cx, cy, ArenaConfig_1.ARENA_CONFIG.warmupDuration * 1000);
+    setTimeout(() => {
+        if (!(0, exports.getMatchByDimension)(match.dimension))
+            return;
+        match.state = "active";
+        match.roundEndsAt = Date.now() + ArenaConfig_1.ARENA_CONFIG.maxRoundTime * 1000;
+        getAllMatchPlayerMps(match).forEach((p) => {
+            p.call("client::player:freeze", [false]);
+        });
+        const center = match.zoneCenter ?? match.preset.center;
+        emitMatchUpdate(match);
+    }, ArenaConfig_1.ARENA_CONFIG.warmupDuration * 1000);
+}
+function checkRoundEnd(match) {
+    if (match.state !== "active")
+        return;
+    const redAlive = getAlivePlayers(match, "red").length;
+    const blueAlive = getAlivePlayers(match, "blue").length;
+    if (redAlive > 0 && blueAlive > 0)
+        return;
+    let roundWinner;
+    if (redAlive === 0 && blueAlive === 0) {
+        roundWinner = "draw";
+    }
+    else if (redAlive === 0) {
+        roundWinner = "blue";
+        match.blueScore++;
+    }
+    else {
+        roundWinner = "red";
+        match.redScore++;
+    }
+    match.state = "round_end";
+    (0, ZoneSystem_1.stopZone)(match.dimension);
+    getAllMatchPlayerMps(match).forEach((p) => {
+        p.call("client::arena:zoneClear");
+        (0, DeathRecapTracker_1.clearVictim)(p.id);
+    });
+    emitToAll(match, "roundEnd", {
+        winner: roundWinner,
+        redScore: match.redScore,
+        blueScore: match.blueScore,
+        round: match.currentRound,
+        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin
+    });
+    emitRoundResult(match, roundWinner);
+    if (match.redScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin || match.blueScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin) {
+        setTimeout(() => endMatch(match.dimension), ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
+    }
+    else {
+        setTimeout(() => {
+            if (!(0, exports.getMatchByDimension)(match.dimension))
+                return;
+            match.currentRound++;
+            beginRound(match);
+        }, ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
+    }
+}
+function handleArenaDeath(victim, killer) {
+    const match = (0, exports.getMatchByPlayer)(victim);
+    if (!match || match.state !== "active")
+        return false;
+    const victimTeam = (0, exports.getTeam)(match, victim.id);
+    if (!victimTeam)
+        return false;
+    const victimData = [...match.redTeam, ...match.blueTeam].find((p) => p.id === victim.id);
+    if (!victimData)
+        return false;
+    if (!victimData.alive)
+        return true;
+    victimData.alive = false;
+    victimData.deaths++;
+    if (victim.getVariable("arenaCastActive")) {
+        victim.setVariable("arenaCastActive", false);
+        _api_1.RAGERP.cef.emit(victim, "arena", "itemCastCancel", {});
+    }
+    victim.spawn(victim.position);
+    victim.health = 100;
+    resetPlayerArenaState(victim);
+    victim.removeAllWeapons();
+    let killerName = "";
+    const recap = (0, DeathRecapTracker_1.buildDeathRecap)(victim.id, killer?.id, killer && mp.players.exists(killer) ? killer.name : "Unknown");
+    if (killer && mp.players.exists(killer)) {
+        const killerTeam = (0, exports.getTeam)(match, killer.id);
+        if (killerTeam && killerTeam !== victimTeam) {
+            const killerData = [...match.redTeam, ...match.blueTeam].find((p) => p.id === killer.id);
+            if (killerData) {
+                killerData.kills++;
+                killerData.roundKills = (killerData.roundKills ?? 0) + 1;
+                if (recap?.headshot)
+                    killerData.headshotKills = (killerData.headshotKills ?? 0) + 1;
+            }
+            killerName = killer.name;
+            const weaponName = recap ? (Weapons_assets_1.weaponUnhash[parseInt(recap.weaponHash, 10)] ?? recap.weaponHash) : "weapon_unarmed";
+            emitKillFeed(match, killer.id, killer.name, victim.id, victim.name, recap?.weaponHash ?? "0", weaponName, recap?.headshot ?? false);
+            _api_1.RAGERP.cef.emit(killer, "arena", "youKill", { victim: victim.name });
+        }
+    }
+    _api_1.RAGERP.cef.emit(victim, "arena", "youDied", { killer: killerName });
+    if (recap) {
+        const weaponName = Weapons_assets_1.weaponUnhash[parseInt(recap.weaponHash, 10)];
+        _api_1.RAGERP.cef.emit(victim, "arena", "deathRecap", {
+            ...recap,
+            weaponName: weaponName ?? recap.weaponHash
+        });
+    }
+    (0, DeathRecapTracker_1.clearVictim)(victim.id);
+    const aliveTeammates = getAlivePlayers(match, victimTeam);
+    const teammatesPayload = aliveTeammates.map((p) => ({ playerId: p.id, playerName: p.name }));
+    _api_1.RAGERP.cef.emit(victim, "arena", "startSpectate", { teammates: teammatesPayload });
+    if (aliveTeammates.length > 0) {
+        const target = aliveTeammates[0];
+        const targetMp = mp.players.at(target.id);
+        if (targetMp && mp.players.exists(targetMp)) {
+            victim.call("client::arena:spectateTeammates", [JSON.stringify(teammatesPayload)]);
+            (0, Player_event_1.startSpectate)(victim, targetMp);
+        }
+    }
+    // Notify other spectators (dead teammates) of updated list when someone dies
+    const deadTeammates = getTeamPlayers(match, victimTeam).filter((p) => !p.alive);
+    deadTeammates.forEach((p) => {
+        const spectatorMp = mp.players.at(p.id);
+        if (spectatorMp && mp.players.exists(spectatorMp) && spectatorMp.getVariable("isSpectating")) {
+            spectatorMp.call("client::arena:spectateTeammatesUpdated", [JSON.stringify(teammatesPayload)]);
+        }
+    });
+    emitAliveCount(match);
+    checkAndEmitLastAlive(match);
+    emitMatchUpdate(match);
+    checkRoundEnd(match);
+    const validKiller = killer && mp.players.exists(killer) && (0, exports.getTeam)(match, killer.id) !== victimTeam ? killer : undefined;
+    (0, StatsEvents_1.onMatchDeath)(victim, validKiller, recap?.headshot ?? false, match.dimension);
+    return true;
+}
+function handleZoneDeath(player) {
+    handleArenaDeath(player, undefined);
+}
+/**
+ * Restore a reconnecting player to their match. Called after spawnWithCharacter when tryReconnect succeeds.
+ * Does not resurrect into a round that already resolved (round_end).
+ */
+function restoreReconnectingPlayer(player, slot) {
+    const match = (0, exports.getMatchByDimension)(slot.dimension);
+    if (!match)
+        return false;
+    const teamArr = slot.team === "red" ? match.redTeam : match.blueTeam;
+    const matchPlayer = teamArr.find((p) => p.characterId === player.character?.id && p.disconnected);
+    if (!matchPlayer)
+        return false;
+    matchPlayer.id = player.id;
+    matchPlayer.disconnected = false;
+    matchPlayer.roundPresenceDeadline = undefined;
+    matchPlayer.name = player.name;
+    (0, MatchManager_1.registerPlayer)(player.id, match.dimension);
+    player.dimension = match.dimension;
+    player.call("client::arena:setTeam", [slot.team]);
+    setArenaVoiceAndTeam(match);
+    const spawn = slot.team === "red" ? match.preset.redSpawn : match.preset.blueSpawn;
+    const weapons = match.roundWeaponSet.weapons;
+    const medkits = ArenaConfig_1.ITEM_CONFIG.medkit.countPerRound;
+    const plates = ArenaConfig_1.ITEM_CONFIG.plate.countPerRound;
+    const canSpawnAlive = slot.alive && (match.state === "active" || match.state === "warmup");
+    if (canSpawnAlive) {
+        resetPlayerArenaState(player);
+        spawnPlayerAtArena(player, spawn, match.dimension);
+        giveRoundWeapons(player, weapons);
+        player.setVariable("arenaMedkits", medkits);
+        player.setVariable("arenaPlates", plates);
+        player.setVariable("arenaCastActive", false);
+        player.setVariable("arenaEffectiveHp", 100);
+        _api_1.RAGERP.cef.emit(player, "arena", "itemCounts", { medkits, plates });
+        player.call("client::player:freeze", [match.state === "warmup"]);
+    }
+    else {
+        resetPlayerArenaState(player);
+        spawnPlayerAtArena(player, spawn, match.dimension);
+        player.health = 0;
+        player.setVariable("isDead", true);
+        const aliveTeammates = getAlivePlayers(match, slot.team);
+        const teammatesPayload = aliveTeammates.map((p) => ({ playerId: p.id, playerName: p.name }));
+        _api_1.RAGERP.cef.emit(player, "arena", "startSpectate", { teammates: teammatesPayload });
+        if (aliveTeammates.length > 0) {
+            const targetMp = mp.players.at(aliveTeammates[0].id);
+            if (targetMp && mp.players.exists(targetMp)) {
+                player.call("client::arena:spectateTeammates", [JSON.stringify(teammatesPayload)]);
+                (0, Player_event_1.startSpectate)(player, targetMp);
+            }
+        }
+    }
+    const cx = Number(match.zoneCenter?.x ?? match.preset.center?.x ?? 0);
+    const cy = Number(match.zoneCenter?.y ?? match.preset.center?.y ?? 0);
+    player.call("client::arena:zoneInit", [cx, cy, 200]);
+    const matchData = {
+        mapId: match.mapId,
+        mapName: match.mapName,
+        queueSize: match.redTeam.length + match.blueTeam.length,
+        redTeam: match.redTeam.map((p) => ({ id: p.id, name: p.name })),
+        blueTeam: match.blueTeam.map((p) => ({ id: p.id, name: p.name })),
+        dimension: match.dimension,
+        redScore: match.redScore,
+        blueScore: match.blueScore,
+        currentRound: match.currentRound,
+        roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin,
+        timeLeft: match.state === "active" ? Math.max(0, Math.ceil((match.roundEndsAt - Date.now()) / 1000)) : ArenaConfig_1.ARENA_CONFIG.maxRoundTime
+    };
+    _api_1.RAGERP.cef.emit(player, "arena", "setMatch", matchData);
+    _api_1.RAGERP.cef.startPage(player, "arena_hud");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "arena_hud");
+    emitAliveCount(match);
+    emitMatchUpdate(match);
+    return true;
+}
+function removePlayerFromMatchPermanently(match, characterId) {
+    const removeFromTeam = (team) => {
+        const idx = team.findIndex((p) => p.characterId === characterId);
+        if (idx >= 0)
+            team.splice(idx, 1);
+    };
+    removeFromTeam(match.redTeam);
+    removeFromTeam(match.blueTeam);
+    const remaining = [...match.redTeam, ...match.blueTeam];
+    if (remaining.length === 0) {
+        destroyMatchVehicles(match);
+        (0, ZoneSystem_1.stopZone)(match.dimension);
+        (0, MatchManager_1.unregisterMatch)(match.dimension);
+    }
+    else {
+        emitMatchUpdate(match);
+        if (match.state === "active")
+            checkRoundEnd(match);
+    }
+}
+/**
+ * Called when a player disconnects during a match. Marks them as temporarily disconnected,
+ * starts a 60s reconnect window, and a shorter round-presence grace (15s). After round-presence
+ * expires, the player no longer counts as alive for round resolution.
+ */
+function handleMatchDisconnect(player) {
+    const match = (0, exports.getMatchByPlayer)(player);
+    if (!match)
+        return false;
+    const characterId = player.character?.id;
+    const team = (0, exports.getTeam)(match, player.id);
+    if (!team || !characterId) {
+        leaveMatch(player, false);
+        return true;
+    }
+    const matchPlayer = [...match.redTeam, ...match.blueTeam].find((p) => p.id === player.id);
+    if (!matchPlayer)
+        return false;
+    (0, MatchManager_1.unregisterPlayer)(player.id);
+    matchPlayer.disconnected = true;
+    const roundPresenceGraceMs = ArenaConfig_1.ARENA_CONFIG.roundPresenceGraceSeconds * 1000;
+    matchPlayer.roundPresenceDeadline = Date.now() + roundPresenceGraceMs;
+    (0, ReconnectManager_1.recordDisconnect)(characterId, match.dimension, team, matchPlayer.alive, matchPlayer.name, () => removePlayerFromMatchPermanently(match, characterId));
+    if (match.state === "active" && matchPlayer.alive) {
+        setTimeout(() => {
+            if (!(0, exports.getMatchByDimension)(match.dimension))
+                return;
+            if (match.state !== "active")
+                return;
+            emitAliveCount(match);
+            checkAndEmitLastAlive(match);
+            checkRoundEnd(match);
+        }, roundPresenceGraceMs);
+    }
+    emitAliveCount(match);
+    emitMatchUpdate(match);
+    return true;
+}
+function leaveMatch(player, returnToMenu = true) {
+    const match = (0, exports.getMatchByPlayer)(player);
+    if (!match)
+        return false;
+    (0, MatchManager_1.unregisterPlayer)(player.id);
+    // Inventory system removed - no cast cancellation needed
+    // Inventory system removed - no item clearing needed
+    player.dimension = 0;
+    player.removeAllWeapons();
+    player.call("client::player:freeze", [false]);
+    (0, Player_event_1.stopSpectate)(player, false);
+    player.call("client::arena:zoneClear");
+    clearArenaVoiceAndTeam(player);
+    match.redTeam = match.redTeam.filter((p) => p.id !== player.id);
+    match.blueTeam = match.blueTeam.filter((p) => p.id !== player.id);
+    const remaining = [...match.redTeam, ...match.blueTeam];
+    if (remaining.length === 0) {
+        destroyMatchVehicles(match);
+        (0, ZoneSystem_1.stopZone)(match.dimension);
+        (0, MatchManager_1.unregisterMatch)(match.dimension);
+    }
+    else {
+        emitMatchUpdate(match);
+        if (match.state === "active")
+            checkRoundEnd(match);
+    }
+    player.call("client::arena:clearTeam");
+    if (returnToMenu) {
+        _api_1.RAGERP.cef.startPage(player, "mainmenu");
+        _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+    }
+    _api_1.RAGERP.cef.emit(player, "arena", "leftMatch", null);
+    return true;
+}
+async function endMatch(dimension) {
+    const match = (0, exports.getMatchByDimension)(dimension);
+    if (!match)
+        return;
+    if (match.state === "match_end")
+        return;
+    match.state = "match_end";
+    (0, ZoneSystem_1.stopZone)(match.dimension);
+    destroyMatchVehicles(match);
+    const winner = match.redScore > match.blueScore ? "red" : match.blueScore > match.redScore ? "blue" : "draw";
+    const baseResults = {
+        redScore: match.redScore,
+        blueScore: match.blueScore,
+        winner,
+        redTeam: match.redTeam.map((p) => ({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths })),
+        blueTeam: match.blueTeam.map((p) => ({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths }))
+    };
+    const allPlayers = getAllMatchPlayerMps(match);
+    const redTeamPlayers = allPlayers.filter((p) => (0, exports.getTeam)(match, p.id) === "red");
+    const blueTeamPlayers = allPlayers.filter((p) => (0, exports.getTeam)(match, p.id) === "blue");
+    await (0, StatsEvents_1.onMatchEnd)(winner, redTeamPlayers, blueTeamPlayers, match.dimension);
+    const rankedInputs = [];
+    for (const p of [...match.redTeam, ...match.blueTeam]) {
+        const characterId = p.characterId;
+        if (!characterId)
+            continue;
+        const isWin = winner !== "draw" && ((winner === "red" && (0, exports.getTeam)(match, p.id) === "red") || (winner === "blue" && (0, exports.getTeam)(match, p.id) === "blue"));
+        const isLoss = winner !== "draw" && ((winner === "red" && (0, exports.getTeam)(match, p.id) === "blue") || (winner === "blue" && (0, exports.getTeam)(match, p.id) === "red"));
+        rankedInputs.push({ characterId, kills: p.kills, deaths: p.deaths, isWin, isLoss });
+    }
+    let mmrResults = new Map();
+    try {
+        mmrResults = await (0, StatsManager_1.updateRankedMatchResult)(rankedInputs);
+    }
+    catch (err) {
+        console.error("[Ranked] updateRankedMatchResult failed:", err);
+    }
+    if ((0, SeasonManager_1.isSeasonActive)()) {
+        const season = (0, SeasonManager_1.getActiveSeason)();
+        if (season) {
+            try {
+                await (0, SeasonManager_1.updateSeasonalRankedMatchResult)(season.seasonId, rankedInputs);
+            }
+            catch (err) {
+                console.error("[Ranked] updateSeasonalRankedMatchResult failed:", err);
+            }
+        }
+    }
+    const matchId = `dim-${dimension}-${Date.now()}`;
+    for (const p of [...match.redTeam, ...match.blueTeam]) {
+        const characterId = p.characterId;
+        if (!characterId || winner === "draw")
+            continue;
+        const team = (0, exports.getTeam)(match, p.id);
+        if (!team)
+            continue;
+        const mmr = mmrResults.get(characterId);
+        const xpResult = (0, ProgressionManager_1.getMatchXpResult)(match.dimension, characterId);
+        const isWin = (winner === "red" && team === "red") || (winner === "blue" && team === "blue");
+        const mmrChange = mmr ? mmr.newMMR - mmr.oldMMR : 0;
+        (0, MatchHistoryManager_1.recordPlayerMatchHistory)({
+            characterId,
+            matchId,
+            result: isWin ? "Win" : "Loss",
+            team,
+            kills: p.kills,
+            deaths: p.deaths,
+            mmrChange,
+            xpGained: xpResult?.totalXp ?? 0,
+            levelAfter: xpResult?.newLevel ?? 1,
+            rankTierAfter: mmr?.rankTier ?? "Unranked"
+        }).catch((err) => console.error("[MatchHistory] recordPlayerMatchHistory failed:", err));
+    }
+    allPlayers.forEach((p) => {
+        (0, MatchManager_1.unregisterPlayer)(p.id);
+        clearArenaVoiceAndTeam(p);
+        // Inventory system removed - no cast cancellation needed
+        p.removeAllWeapons();
+        p.call("client::player:freeze", [false]);
+        (0, Player_event_1.stopSpectate)(p, false);
+        p.call("client::arena:zoneClear");
+        const characterId = p.character?.id;
+        const mmr = characterId ? mmrResults.get(characterId) : undefined;
+        const xpResult = characterId ? (0, ProgressionManager_1.getMatchXpResult)(match.dimension, characterId) : undefined;
+        const results = {
+            ...baseResults,
+            oldMMR: mmr?.oldMMR ?? 0,
+            newMMR: mmr?.newMMR ?? 0,
+            rankTier: mmr?.rankTier ?? "Unranked",
+            xpGained: xpResult?.totalXp ?? 0,
+            leveledUp: xpResult?.leveledUp ?? false,
+            newLevel: xpResult?.newLevel ?? 0
+        };
+        _api_1.RAGERP.cef.emit(p, "arena", "matchEnd", results);
+    });
+    (0, ProgressionManager_1.clearMatchXpResults)(match.dimension);
+    (0, MatchManager_1.unregisterMatch)(dimension);
+    setTimeout(() => {
+        allPlayers.forEach((p) => {
+            if (mp.players.exists(p)) {
+                p.dimension = 0;
+                p.call("client::arena:clearTeam");
+                _api_1.RAGERP.cef.startPage(p, "mainmenu");
+                _api_1.RAGERP.cef.emit(p, "system", "setPage", "mainmenu");
+            }
+        });
+    }, ArenaConfig_1.ARENA_CONFIG.matchEndDelay * 1000);
+}
+function tickMatches() {
+    const now = Date.now();
+    (0, MatchManager_1.getAllMatches)().forEach((match, dim) => {
+        if (match.state === "active" && now >= match.roundEndsAt) {
+            const redAlive = getAlivePlayers(match, "red").length;
+            const blueAlive = getAlivePlayers(match, "blue").length;
+            if (redAlive > blueAlive)
+                match.redScore++;
+            else if (blueAlive > redAlive)
+                match.blueScore++;
+            match.state = "round_end";
+            (0, ZoneSystem_1.stopZone)(dim);
+            getAllMatchPlayerMps(match).forEach((p) => {
+                p.call("client::arena:zoneClear");
+                (0, DeathRecapTracker_1.clearVictim)(p.id);
+            });
+            const roundWinner = redAlive > blueAlive ? "red" : blueAlive > redAlive ? "blue" : "draw";
+            emitToAll(match, "roundEnd", {
+                winner: roundWinner,
+                redScore: match.redScore,
+                blueScore: match.blueScore,
+                round: match.currentRound,
+                roundsToWin: ArenaConfig_1.ARENA_CONFIG.roundsToWin
+            });
+            emitRoundResult(match, roundWinner);
+            if (match.redScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin || match.blueScore >= ArenaConfig_1.ARENA_CONFIG.roundsToWin) {
+                setTimeout(() => endMatch(dim), ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
+            }
+            else {
+                setTimeout(() => {
+                    if (!(0, exports.getMatchByDimension)(dim))
+                        return;
+                    match.currentRound++;
+                    beginRound(match);
+                }, ArenaConfig_1.ARENA_CONFIG.roundEndDelay * 1000);
+            }
+        }
+        else if (match.state === "active") {
+            emitMatchUpdate(match);
+        }
+    });
+}
+setInterval(tickMatches, 1000);
+
+
+/***/ },
+
+/***/ "./source/server/modes/hopouts/ArenaPresets.asset.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modes/hopouts/ArenaPresets.asset.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getArenaPresets = getArenaPresets;
+exports.saveArenaPreset = saveArenaPreset;
+const fs = __importStar(__webpack_require__(/*! fs */ "fs"));
+const path = __importStar(__webpack_require__(/*! path */ "path"));
+const DATA_PATH = path.join(process.cwd(), "data", "arenas.json");
+let presets = [];
+function ensureDataDir() {
+    const dir = path.dirname(DATA_PATH);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+}
+function loadPresets() {
+    try {
+        ensureDataDir();
+        if (fs.existsSync(DATA_PATH)) {
+            const raw = fs.readFileSync(DATA_PATH, "utf-8");
+            const parsed = JSON.parse(raw);
+            presets = Array.isArray(parsed) ? parsed : [];
+        }
+        else {
+            presets = [];
+            fs.writeFileSync(DATA_PATH, JSON.stringify([], null, 2), "utf-8");
+        }
+    }
+    catch (err) {
+        console.error("[Hopouts] Failed to load locations:", err);
+        presets = [];
+    }
+    return presets;
+}
+function getArenaPresets() {
+    if (presets.length === 0) {
+        loadPresets();
+    }
+    return presets;
+}
+function saveArenaPreset(preset) {
+    try {
+        ensureDataDir();
+        const all = getArenaPresets();
+        const idx = all.findIndex((p) => p.id === preset.id);
+        if (idx >= 0) {
+            all[idx] = preset;
+        }
+        else {
+            all.push(preset);
+        }
+        fs.writeFileSync(DATA_PATH, JSON.stringify(all, null, 2), "utf-8");
+        presets = all;
+        return true;
+    }
+    catch (err) {
+        console.error("[Hopouts] Failed to save location:", err);
+        return false;
+    }
+}
+loadPresets();
+
+
+/***/ },
+
+/***/ "./source/server/modes/hopouts/ZoneSystem.ts"
+/*!***************************************************!*\
+  !*** ./source/server/modes/hopouts/ZoneSystem.ts ***!
+  \***************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.startZone = startZone;
+exports.stopZone = stopZone;
+exports.getZoneState = getZoneState;
+exports.tickZones = tickZones;
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const ArenaConfig_1 = __webpack_require__(/*! ./ArenaConfig */ "./source/server/modes/hopouts/ArenaConfig.ts");
+const ArenaMatch_manager_1 = __webpack_require__(/*! ./ArenaMatch.manager */ "./source/server/modes/hopouts/ArenaMatch.manager.ts");
+const activeZones = new Map();
+const outOfBoundsStart = new Map();
+const OUT_OF_BOUNDS_RADIUS = 320;
+const OUT_OF_BOUNDS_GRACE = 8;
+function startZone(dimension, centerX, centerY, elapsedOffsetMs = 0) {
+    if (ArenaConfig_1.ZONE_PHASES.length === 0)
+        return;
+    const firstPhase = ArenaConfig_1.ZONE_PHASES[0];
+    const zone = {
+        dimension,
+        centerX,
+        centerY,
+        currentRadius: 200,
+        targetRadius: firstPhase.endRadius,
+        currentPhase: 0,
+        phaseStartedAt: Date.now() - elapsedOffsetMs,
+        phaseDuration: firstPhase.duration * 1000,
+        dps: firstPhase.dps,
+        active: true
+    };
+    activeZones.set(dimension, zone);
+}
+function stopZone(dimension) {
+    activeZones.delete(dimension);
+    outOfBoundsStart.clear();
+}
+function getZoneState(dimension) {
+    return activeZones.get(dimension);
+}
+function advancePhase(zone) {
+    zone.currentPhase++;
+    if (zone.currentPhase >= ArenaConfig_1.ZONE_PHASES.length) {
+        return false;
+    }
+    const phase = ArenaConfig_1.ZONE_PHASES[zone.currentPhase];
+    zone.currentRadius = zone.targetRadius;
+    zone.targetRadius = phase.endRadius;
+    zone.phaseDuration = phase.duration * 1000;
+    zone.phaseStartedAt = Date.now();
+    zone.dps = phase.dps;
+    return true;
+}
+function getCurrentRadius(zone) {
+    const elapsed = Date.now() - zone.phaseStartedAt;
+    const progress = Math.min(1, elapsed / zone.phaseDuration);
+    return zone.currentRadius + (zone.targetRadius - zone.currentRadius) * progress;
+}
+function isInZone(zone, x, y) {
+    const radius = getCurrentRadius(zone);
+    const dx = x - zone.centerX;
+    const dy = y - zone.centerY;
+    return (dx * dx + dy * dy) <= (radius * radius);
+}
+function tickZones() {
+    const now = Date.now();
+    activeZones.forEach((zone, dim) => {
+        if (!zone.active)
+            return;
+        const match = (0, ArenaMatch_manager_1.getMatchByDimension)(dim);
+        if (!match || match.state !== "active")
+            return;
+        const elapsed = now - zone.phaseStartedAt;
+        if (elapsed >= zone.phaseDuration) {
+            if (!advancePhase(zone)) {
+                zone.active = false;
+            }
+        }
+        const radius = getCurrentRadius(zone);
+        const safeRadius = Number.isFinite(radius) && radius > 0 ? Math.round(radius) : 200;
+        const phaseTimeLeft = Math.max(0, Math.ceil((zone.phaseDuration - (now - zone.phaseStartedAt)) / 1000));
+        const allPlayers = [...match.redTeam, ...match.blueTeam];
+        const playersToKill = [];
+        allPlayers.forEach((mp_) => {
+            const p = mp.players.at(mp_.id);
+            if (!p || !mp.players.exists(p))
+                return;
+            if (mp_.alive && !isInZone(zone, p.position.x, p.position.y)) {
+                const currentHp = p.health;
+                const newHp = currentHp - zone.dps;
+                if (newHp <= 0) {
+                    playersToKill.push(p);
+                }
+                else {
+                    p.health = newHp;
+                }
+            }
+            const dx = p.position.x - zone.centerX;
+            const dy = p.position.y - zone.centerY;
+            const distSq = dx * dx + dy * dy;
+            if (distSq > OUT_OF_BOUNDS_RADIUS * OUT_OF_BOUNDS_RADIUS) {
+                const startedAt = outOfBoundsStart.get(p.id) ?? now;
+                outOfBoundsStart.set(p.id, startedAt);
+                const timeLeft = Math.max(0, OUT_OF_BOUNDS_GRACE - Math.floor((now - startedAt) / 1000));
+                _api_1.RAGERP.cef.emit(p, "arena", "outOfBounds", { active: true, timeLeft });
+                if (timeLeft <= 0) {
+                    playersToKill.push(p);
+                }
+            }
+            else if (outOfBoundsStart.has(p.id)) {
+                outOfBoundsStart.delete(p.id);
+                _api_1.RAGERP.cef.emit(p, "arena", "outOfBounds", { active: false, timeLeft: 0 });
+            }
+            p.call("client::arena:zoneUpdate", [
+                zone.centerX,
+                zone.centerY,
+                Math.round(radius),
+                zone.currentPhase + 1,
+                ArenaConfig_1.ZONE_PHASES.length,
+                phaseTimeLeft,
+                zone.dps
+            ]);
+            _api_1.RAGERP.cef.emit(p, "arena", "zoneUpdate", {
+                centerX: zone.centerX,
+                centerY: zone.centerY,
+                radius: safeRadius,
+                phase: zone.currentPhase + 1,
+                totalPhases: ArenaConfig_1.ZONE_PHASES.length,
+                phaseTimeLeft,
+                dps: zone.dps
+            });
+        });
+        playersToKill.forEach((p) => {
+            if (mp.players.exists(p)) {
+                (0, ArenaMatch_manager_1.handleZoneDeath)(p);
+            }
+        });
+    });
+}
+setInterval(tickZones, 1000);
+
+
+/***/ },
+
 /***/ "./source/server/modules/Attachments.module.ts"
 /*!*****************************************************!*\
   !*** ./source/server/modules/Attachments.module.ts ***!
@@ -6722,6 +8253,2723 @@ exports.Chat = {
         });
     }
 };
+
+
+/***/ },
+
+/***/ "./source/server/modules/combat/CombatIntegrity.ts"
+/*!*********************************************************!*\
+  !*** ./source/server/modules/combat/CombatIntegrity.ts ***!
+  \*********************************************************/
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Combat integrity: server-side validation safeguards.
+ * Does NOT change damage, recoil, or hitmarker logic.
+ * Only adds safety validation (reject invalid hits, log suspicious behavior).
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getTimeSinceLastShot = getTimeSinceLastShot;
+exports.validateFireRate = validateFireRate;
+exports.validateDuplicateHit = validateDuplicateHit;
+exports.validateDistance = validateDistance;
+exports.recordKill = recordKill;
+exports.logSuspiciousShortInterval = logSuspiciousShortInterval;
+exports.clearPlayerCombatTracking = clearPlayerCombatTracking;
+/** Minimum ms between shots from same shooter (derived from RPM). Default 100ms = 600 RPM. */
+const DEFAULT_MIN_SHOT_INTERVAL_MS = 100;
+/** Default max hit distance (m) when weapon unknown. */
+const DEFAULT_MAX_DISTANCE_M = 100;
+/** Per-weapon RPM (rounds per minute). Used to compute min shot interval. */
+const weaponRPM = {
+    [String(mp.joaat("weapon_pistol"))]: 200,
+    [String(mp.joaat("weapon_pistol_mk2"))]: 200,
+    [String(mp.joaat("weapon_combatpistol"))]: 220,
+    [String(mp.joaat("weapon_heavypistol"))]: 150,
+    [String(mp.joaat("weapon_appistol"))]: 350,
+    [String(mp.joaat("weapon_pistol50"))]: 140,
+    [String(mp.joaat("weapon_microsmg"))]: 550,
+    [String(mp.joaat("weapon_smg"))]: 450,
+    [String(mp.joaat("weapon_assaultrifle"))]: 400,
+    [String(mp.joaat("weapon_assaultrifle_mk2"))]: 400,
+    [String(mp.joaat("weapon_carbinerifle"))]: 450,
+    [String(mp.joaat("weapon_carbinerifle_mk2"))]: 450,
+    [String(mp.joaat("weapon_specialcarbine"))]: 450,
+    [String(mp.joaat("weapon_bullpuprifle"))]: 450,
+    [String(mp.joaat("weapon_advancedrifle"))]: 500,
+    [String(mp.joaat("weapon_sniperrifle"))]: 35,
+    [String(mp.joaat("weapon_heavysniper"))]: 30,
+    [String(mp.joaat("weapon_heavysniper_mk2"))]: 30,
+    [String(mp.joaat("weapon_pumpshotgun"))]: 60,
+    [String(mp.joaat("weapon_sawnoffshotgun"))]: 90,
+    [String(mp.joaat("weapon_assaultshotgun"))]: 120,
+    [String(mp.joaat("weapon_combatshotgun"))]: 100,
+    [String(mp.joaat("weapon_mg"))]: 500,
+    [String(mp.joaat("weapon_combatmg"))]: 550,
+    [String(mp.joaat("weapon_combatpdw"))]: 450,
+    [String(mp.joaat("weapon_compactrifle"))]: 450
+};
+/** Per-weapon max valid hit distance (m). Reject hits beyond this. */
+const weaponMaxDistance = {
+    [String(mp.joaat("weapon_pistol"))]: 120,
+    [String(mp.joaat("weapon_pistol_mk2"))]: 120,
+    [String(mp.joaat("weapon_combatpistol"))]: 120,
+    [String(mp.joaat("weapon_heavypistol"))]: 120,
+    [String(mp.joaat("weapon_appistol"))]: 120,
+    [String(mp.joaat("weapon_pistol50"))]: 120,
+    [String(mp.joaat("weapon_microsmg"))]: 150,
+    [String(mp.joaat("weapon_smg"))]: 150,
+    [String(mp.joaat("weapon_assaultrifle"))]: 300,
+    [String(mp.joaat("weapon_assaultrifle_mk2"))]: 300,
+    [String(mp.joaat("weapon_carbinerifle"))]: 300,
+    [String(mp.joaat("weapon_carbinerifle_mk2"))]: 300,
+    [String(mp.joaat("weapon_specialcarbine"))]: 300,
+    [String(mp.joaat("weapon_bullpuprifle"))]: 300,
+    [String(mp.joaat("weapon_advancedrifle"))]: 300,
+    [String(mp.joaat("weapon_sniperrifle"))]: 400,
+    [String(mp.joaat("weapon_heavysniper"))]: 450,
+    [String(mp.joaat("weapon_heavysniper_mk2"))]: 450,
+    [String(mp.joaat("weapon_pumpshotgun"))]: 80,
+    [String(mp.joaat("weapon_sawnoffshotgun"))]: 60,
+    [String(mp.joaat("weapon_assaultshotgun"))]: 80,
+    [String(mp.joaat("weapon_combatshotgun"))]: 80,
+    [String(mp.joaat("weapon_mg"))]: 350,
+    [String(mp.joaat("weapon_combatmg"))]: 350,
+    [String(mp.joaat("weapon_combatpdw"))]: 150,
+    [String(mp.joaat("weapon_compactrifle"))]: 250
+};
+function getMaxDistanceForWeapon(weaponHash) {
+    const explicit = weaponMaxDistance[weaponHash];
+    if (explicit !== undefined)
+        return explicit;
+    return DEFAULT_MAX_DISTANCE_M;
+}
+function getMinShotIntervalMs(weaponHash) {
+    const rpm = weaponRPM[weaponHash];
+    if (!rpm || rpm <= 0)
+        return DEFAULT_MIN_SHOT_INTERVAL_MS;
+    return Math.round(60000 / rpm);
+}
+// --- Fire rate tracking ---
+const lastShotTimeByShooter = new Map();
+// --- Duplicate hit guard: per victim per shooter ---
+const lastHitByShooterVictim = new Map();
+const DUPLICATE_HIT_COOLDOWN_MS = 30;
+function hitKey(shooterId, victimId) {
+    return `${shooterId}:${victimId}`;
+}
+// --- Suspicious headshot tracking (last 10 kills per shooter) ---
+const lastKillsByShooter = new Map();
+const KILL_HISTORY_SIZE = 10;
+const HEADSHOT_THRESHOLD = 0.9;
+const SUSPICIOUS_SHORT_HIT_MS = 25;
+/**
+ * Get time since shooter's last shot (ms). Returns -1 if no previous shot.
+ */
+function getTimeSinceLastShot(shooterId) {
+    const last = lastShotTimeByShooter.get(shooterId);
+    if (last === undefined)
+        return -1;
+    return Date.now() - last;
+}
+/**
+ * Validate fire rate: reject if shooter hits faster than weapon RPM allows.
+ */
+function validateFireRate(shooterId, weaponHash) {
+    const now = Date.now();
+    const last = lastShotTimeByShooter.get(shooterId);
+    const minInterval = getMinShotIntervalMs(weaponHash);
+    if (last !== undefined && now - last < minInterval) {
+        return { allowed: false, reason: `fire_rate: hit ${now - last}ms after last (min ${minInterval}ms)` };
+    }
+    lastShotTimeByShooter.set(shooterId, now);
+    return { allowed: true };
+}
+/**
+ * Validate duplicate hit: reject if same shooter->victim hit within cooldown.
+ */
+function validateDuplicateHit(shooterId, victimId) {
+    const key = hitKey(shooterId, victimId);
+    const now = Date.now();
+    const last = lastHitByShooterVictim.get(key);
+    if (last !== undefined && now - last < DUPLICATE_HIT_COOLDOWN_MS) {
+        return { allowed: false, reason: `duplicate_hit: ${now - last}ms since last (cooldown ${DUPLICATE_HIT_COOLDOWN_MS}ms)` };
+    }
+    lastHitByShooterVictim.set(key, now);
+    return { allowed: true };
+}
+/**
+ * Validate distance: reject if hit beyond weapon max range.
+ */
+function validateDistance(weaponHash, distance) {
+    const max = getMaxDistanceForWeapon(weaponHash);
+    if (distance > max) {
+        return { allowed: false, reason: `distance: ${distance.toFixed(1)}m exceeds max ${max}m` };
+    }
+    return { allowed: true };
+}
+/**
+ * Record a kill for headshot ratio tracking. Call when a hit results in death.
+ * Logs if >90% of last 10 kills were headshots (debug only, no ban).
+ */
+function recordKill(shooterId, shooterName, victimName, isHead) {
+    let history = lastKillsByShooter.get(shooterId);
+    if (!history) {
+        history = [];
+        lastKillsByShooter.set(shooterId, history);
+    }
+    history.push({ isHead });
+    if (history.length > KILL_HISTORY_SIZE)
+        history.shift();
+    const headCount = history.filter((h) => h.isHead).length;
+    const headRatio = history.length >= 5 ? headCount / history.length : 0;
+    if (headRatio > HEADSHOT_THRESHOLD && history.length >= 5) {
+        console.warn(`[CombatIntegrity] Suspicious headshot ratio: ${shooterName} (${shooterId}) has ${headCount}/${history.length} headshot kills (>${HEADSHOT_THRESHOLD * 100}%)`);
+    }
+}
+/**
+ * Log suspiciously short time between hits (debug only). Call when a hit is accepted.
+ * If time since last shot is < 25ms, something may be wrong (e.g. config bug).
+ */
+function logSuspiciousShortInterval(shooterId, shooterName, victimName, timeSinceLastShot) {
+    if (timeSinceLastShot > 0 && timeSinceLastShot < SUSPICIOUS_SHORT_HIT_MS) {
+        console.warn(`[CombatIntegrity] Suspicious short hit interval: ${shooterName} (${shooterId}) hit ${victimName} ${timeSinceLastShot}ms after last shot`);
+    }
+}
+/**
+ * Called when a player disconnects. Cleans up tracking.
+ */
+function clearPlayerCombatTracking(playerId) {
+    lastShotTimeByShooter.delete(playerId);
+    lastKillsByShooter.delete(playerId);
+    const keysToDelete = [...lastHitByShooterVictim.keys()].filter((k) => k.startsWith(`${playerId}:`) || k.endsWith(`:${playerId}`));
+    keysToDelete.forEach((k) => lastHitByShooterVictim.delete(k));
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/combat/DeathRecapTracker.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modules/combat/DeathRecapTracker.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Death recap: track combat damage per victim for PvP death recap panel.
+ * Records damage dealt TO each victim and damage dealt BY each victim.
+ * Does NOT change combat logic — only records for UI.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.recordDamageToVictim = recordDamageToVictim;
+exports.recordDamageDealt = recordDamageDealt;
+exports.buildDeathRecap = buildDeathRecap;
+exports.clearVictim = clearVictim;
+exports.clearAll = clearAll;
+const MAX_HITS_PER_VICTIM = 30;
+const hitsToVictim = new Map();
+const damageDealtByPlayer = new Map();
+function damageKey(damagerId, targetId) {
+    return `${damagerId}:${targetId}`;
+}
+/** Record when attacker damages victim. Call from DamageSync after damage is applied. */
+function recordDamageToVictim(victimId, attackerId, weaponHash, damage, bone) {
+    let list = hitsToVictim.get(victimId);
+    if (!list) {
+        list = [];
+        hitsToVictim.set(victimId, list);
+    }
+    list.push({
+        victimId,
+        attackerId,
+        weaponHash,
+        damage,
+        bone,
+        timestamp: Date.now()
+    });
+    if (list.length > MAX_HITS_PER_VICTIM)
+        list.shift();
+}
+/** Record when damager damages target (for victimDamageToKiller). */
+function recordDamageDealt(damagerId, targetId, damage) {
+    const key = damageKey(damagerId, targetId);
+    const existing = damageDealtByPlayer.get(key);
+    if (existing) {
+        existing.damage += damage;
+    }
+    else {
+        damageDealtByPlayer.set(key, { damage });
+    }
+}
+/** Build death recap for victim killed by killer. Returns null if no data. */
+function buildDeathRecap(victimId, killerId, killerName) {
+    const hits = hitsToVictim.get(victimId);
+    if (!hits || hits.length === 0) {
+        if (killerId !== undefined && killerName) {
+            return {
+                killerId,
+                killerName,
+                weaponHash: "0",
+                totalDamage: 0,
+                hits: 0,
+                headshots: 0,
+                headshot: false,
+                victimDamageToKiller: getVictimDamageToKiller(victimId, killerId)
+            };
+        }
+        return null;
+    }
+    const killerHits = killerId !== undefined ? hits.filter((h) => h.attackerId === killerId) : hits;
+    const lastHit = killerHits.length > 0 ? killerHits[killerHits.length - 1] : hits[hits.length - 1];
+    const totalDamage = killerHits.reduce((sum, h) => sum + h.damage, 0);
+    const headshots = killerHits.filter((h) => h.bone === "Head").length;
+    const headshot = lastHit.bone === "Head";
+    return {
+        killerId: lastHit.attackerId,
+        killerName: killerName || "Unknown",
+        weaponHash: lastHit.weaponHash,
+        totalDamage,
+        hits: killerHits.length,
+        headshots,
+        headshot,
+        victimDamageToKiller: getVictimDamageToKiller(victimId, lastHit.attackerId)
+    };
+}
+function getVictimDamageToKiller(victimId, killerId) {
+    const key = damageKey(victimId, killerId);
+    const entry = damageDealtByPlayer.get(key);
+    return entry?.damage ?? 0;
+}
+/** Clear victim data (round end, match end, disconnect). */
+function clearVictim(victimId) {
+    hitsToVictim.delete(victimId);
+    for (const key of damageDealtByPlayer.keys()) {
+        if (key.startsWith(`${victimId}:`) || key.endsWith(`:${victimId}`)) {
+            damageDealtByPlayer.delete(key);
+        }
+    }
+}
+/** Clear all (match end). */
+function clearAll() {
+    hitsToVictim.clear();
+    damageDealtByPlayer.clear();
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/combat/SnapshotManager.ts"
+/*!*********************************************************!*\
+  !*** ./source/server/modules/combat/SnapshotManager.ts ***!
+  \*********************************************************/
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Minimal lag compensation: per-player position snapshot history.
+ * Used to rewind victim position to shot time for distance validation.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getRewindPosition = getRewindPosition;
+exports.clearPlayerSnapshots = clearPlayerSnapshots;
+exports.startSnapshotRecording = startSnapshotRecording;
+const MAX_SNAPSHOTS = 20;
+const SNAPSHOT_INTERVAL_MS = 50;
+const snapshotsByPlayer = new Map();
+let recordingInterval = null;
+function recordSnapshot(player) {
+    if (!player || !mp.players.exists(player))
+        return;
+    const snap = {
+        t: Date.now(),
+        pos: { x: player.position.x, y: player.position.y, z: player.position.z },
+        dimension: player.dimension
+    };
+    let list = snapshotsByPlayer.get(player.id);
+    if (!list) {
+        list = [];
+        snapshotsByPlayer.set(player.id, list);
+    }
+    list.push(snap);
+    if (list.length > MAX_SNAPSHOTS)
+        list.shift();
+}
+/**
+ * Find the closest snapshot for the victim at or before shotTime.
+ * Returns snapshot position or null if none found (caller falls back to current position).
+ * Logs debug entry when rewind fails.
+ */
+function getRewindPosition(victimId, shotTime) {
+    const list = snapshotsByPlayer.get(victimId);
+    if (!list || list.length === 0) {
+        console.log(`[SnapshotManager] No snapshots for victim ${victimId}, using current position fallback`);
+        return null;
+    }
+    let best = null;
+    let bestDiff = Infinity;
+    for (const s of list) {
+        if (s.t <= shotTime) {
+            const diff = shotTime - s.t;
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                best = s;
+            }
+        }
+    }
+    if (!best) {
+        console.log(`[SnapshotManager] No snapshot at/before shotTime for victim ${victimId} (shotTime=${shotTime}, oldest=${list[0]?.t}), using current position fallback`);
+        return null;
+    }
+    return best.pos;
+}
+/**
+ * Remove snapshots when player disconnects.
+ */
+function clearPlayerSnapshots(playerId) {
+    snapshotsByPlayer.delete(playerId);
+}
+/**
+ * Start the global snapshot recording interval.
+ */
+function startSnapshotRecording() {
+    if (recordingInterval)
+        return;
+    recordingInterval = setInterval(() => {
+        mp.players.forEach((player) => recordSnapshot(player));
+    }, SNAPSHOT_INTERVAL_MS);
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/matches/MatchManager.ts"
+/*!*******************************************************!*\
+  !*** ./source/server/modules/matches/MatchManager.ts ***!
+  \*******************************************************/
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Generic match registry and team tracking.
+ * Stores matches by dimension; provides lookup and team helpers.
+ * Mode-specific logic (rounds, weapons, zone) stays in modes.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getMatchByDimension = getMatchByDimension;
+exports.getMatchByPlayer = getMatchByPlayer;
+exports.isPlayerInMatch = isPlayerInMatch;
+exports.getTeam = getTeam;
+exports.isAliveInMatch = isAliveInMatch;
+exports.registerMatch = registerMatch;
+exports.unregisterMatch = unregisterMatch;
+exports.unregisterPlayer = unregisterPlayer;
+exports.registerPlayer = registerPlayer;
+exports.getAllMatches = getAllMatches;
+const activeMatches = new Map();
+const playerToMatch = new Map();
+function getMatchByDimension(dim) {
+    return activeMatches.get(dim);
+}
+function getMatchByPlayer(player) {
+    const dim = playerToMatch.get(player.id);
+    return dim !== undefined ? activeMatches.get(dim) : undefined;
+}
+function isPlayerInMatch(player) {
+    return playerToMatch.has(player.id);
+}
+function getTeam(match, playerId) {
+    if (match.redTeam.some((p) => p.id === playerId))
+        return "red";
+    if (match.blueTeam.some((p) => p.id === playerId))
+        return "blue";
+    return null;
+}
+function isAliveInMatch(match, playerId) {
+    const p = [...match.redTeam, ...match.blueTeam].find((x) => x.id === playerId);
+    return p ? p.alive : false;
+}
+function registerMatch(match) {
+    activeMatches.set(match.dimension, match);
+    [...match.redTeam, ...match.blueTeam].forEach((p) => playerToMatch.set(p.id, match.dimension));
+}
+function unregisterMatch(dimension) {
+    const match = activeMatches.get(dimension);
+    if (match) {
+        [...match.redTeam, ...match.blueTeam].forEach((p) => playerToMatch.delete(p.id));
+        activeMatches.delete(dimension);
+    }
+}
+function unregisterPlayer(playerId) {
+    playerToMatch.delete(playerId);
+}
+function registerPlayer(playerId, dimension) {
+    playerToMatch.set(playerId, dimension);
+}
+function getAllMatches() {
+    return activeMatches;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/matches/ReconnectManager.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modules/matches/ReconnectManager.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Match reconnect protection: allow players who disconnect during a match
+ * to reconnect within 60 seconds and rejoin the same match.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.recordDisconnect = recordDisconnect;
+exports.tryReconnect = tryReconnect;
+exports.hasReconnectSlot = hasReconnectSlot;
+exports.cancelReconnect = cancelReconnect;
+const RECONNECT_WINDOW_MS = 60000;
+const slotsByCharacterId = new Map();
+function recordDisconnect(characterId, dimension, team, alive, name, onExpire) {
+    if (slotsByCharacterId.has(characterId))
+        return;
+    const reconnectDeadline = Date.now() + RECONNECT_WINDOW_MS;
+    const timeoutId = setTimeout(() => {
+        slotsByCharacterId.delete(characterId);
+        onExpire();
+    }, RECONNECT_WINDOW_MS);
+    slotsByCharacterId.set(characterId, {
+        characterId,
+        dimension,
+        team,
+        alive,
+        name,
+        reconnectDeadline,
+        timeoutId
+    });
+}
+function tryReconnect(player) {
+    const characterId = player.character?.id;
+    if (!characterId)
+        return null;
+    const slot = slotsByCharacterId.get(characterId);
+    if (!slot || Date.now() > slot.reconnectDeadline) {
+        if (slot) {
+            clearTimeout(slot.timeoutId);
+            slotsByCharacterId.delete(characterId);
+        }
+        return null;
+    }
+    clearTimeout(slot.timeoutId);
+    slotsByCharacterId.delete(characterId);
+    return slot;
+}
+function hasReconnectSlot(characterId) {
+    const slot = slotsByCharacterId.get(characterId);
+    return !!slot && Date.now() <= slot.reconnectDeadline;
+}
+function cancelReconnect(characterId) {
+    const slot = slotsByCharacterId.get(characterId);
+    if (slot) {
+        clearTimeout(slot.timeoutId);
+        slotsByCharacterId.delete(characterId);
+    }
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/matchmaking/QueueManager.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modules/matchmaking/QueueManager.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Generic queue infrastructure for matchmaking.
+ * Manages player queues per size; mode-specific logic (voting, countdown) stays in modes.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.addPlayer = addPlayer;
+exports.addPlayers = addPlayers;
+exports.removePlayer = removePlayer;
+exports.removePlayers = removePlayers;
+exports.getQueue = getQueue;
+exports.getQueueForPlayerInfo = getQueueForPlayerInfo;
+exports.isQueueFull = isQueueFull;
+exports.clearQueue = clearQueue;
+exports.allocateDimension = allocateDimension;
+const queues = new Map();
+let nextDimension = 1000;
+function getOrCreateQueue(size) {
+    let q = queues.get(size);
+    if (!q) {
+        q = [];
+        queues.set(size, q);
+    }
+    return q;
+}
+function getQueueForPlayer(player) {
+    for (const [size, players] of queues) {
+        if (players.some((p) => p.id === player.id)) {
+            return { size, players };
+        }
+    }
+    return null;
+}
+/**
+ * Add a player to a queue. Returns true if added.
+ */
+function addPlayer(player, size) {
+    if (getQueueForPlayer(player))
+        return false;
+    const q = getOrCreateQueue(size);
+    q.push(player);
+    return true;
+}
+/**
+ * Add multiple players to a queue (e.g. party). Returns true if all added.
+ * If any player is already in a queue, none are added.
+ */
+function addPlayers(players, size) {
+    for (const p of players) {
+        if (getQueueForPlayer(p))
+            return false;
+    }
+    const q = getOrCreateQueue(size);
+    players.forEach((p) => q.push(p));
+    return true;
+}
+/**
+ * Remove a player from their queue. Returns true if removed.
+ */
+function removePlayer(player) {
+    const found = getQueueForPlayer(player);
+    if (!found)
+        return false;
+    const idx = found.players.findIndex((p) => p.id === player.id);
+    if (idx >= 0) {
+        found.players.splice(idx, 1);
+        return true;
+    }
+    return false;
+}
+/**
+ * Remove multiple players from a queue by ID. Used when a party leaves.
+ */
+function removePlayers(playerIds, size) {
+    const q = queues.get(size);
+    if (!q)
+        return;
+    for (let i = q.length - 1; i >= 0; i--) {
+        if (playerIds.includes(q[i].id))
+            q.splice(i, 1);
+    }
+}
+/**
+ * Get the queue for a given size.
+ */
+function getQueue(size) {
+    return getOrCreateQueue(size);
+}
+/**
+ * Get the queue a player is in, or null.
+ */
+function getQueueForPlayerInfo(player) {
+    return getQueueForPlayer(player);
+}
+/**
+ * Check if a queue has enough players (size * 2 for 2 teams).
+ */
+function isQueueFull(size) {
+    const needed = size * 2;
+    const q = queues.get(size);
+    return q ? q.length >= needed : false;
+}
+/**
+ * Clear a queue.
+ */
+function clearQueue(size) {
+    const q = queues.get(size);
+    if (q)
+        q.length = 0;
+}
+/**
+ * Allocate a unique dimension ID for a new match.
+ */
+function allocateDimension() {
+    return nextDimension++;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/party/PartyEvents.ts"
+/*!****************************************************!*\
+  !*** ./source/server/modules/party/PartyEvents.ts ***!
+  \****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getPartyById = exports.isLeader = exports.getPartyByPlayer = void 0;
+exports.onPartyCreate = onPartyCreate;
+exports.onPartyInvite = onPartyInvite;
+exports.onPartyAccept = onPartyAccept;
+exports.onPartyDecline = onPartyDecline;
+exports.onPartyLeave = onPartyLeave;
+exports.onPartyKick = onPartyKick;
+exports.onPartyDisband = onPartyDisband;
+/**
+ * Party event handlers. Call these from CEF or commands when UI is added.
+ * Wraps PartyManager and can emit to clients.
+ */
+const PartyManager_1 = __webpack_require__(/*! ./PartyManager */ "./source/server/modules/party/PartyManager.ts");
+Object.defineProperty(exports, "getPartyByPlayer", ({ enumerable: true, get: function () { return PartyManager_1.getPartyByPlayer; } }));
+Object.defineProperty(exports, "isLeader", ({ enumerable: true, get: function () { return PartyManager_1.isLeader; } }));
+Object.defineProperty(exports, "getPartyById", ({ enumerable: true, get: function () { return PartyManager_1.getPartyById; } }));
+/** Serialize party for client (no Set in JSON). Includes member names for UI. */
+function partyToClient(party) {
+    const members = party.memberIds.map((id) => {
+        const p = mp.players.at(id);
+        return { id, name: p && mp.players.exists(p) ? p.name : "Unknown" };
+    });
+    return {
+        partyId: party.partyId,
+        leaderId: party.leaderId,
+        memberIds: party.memberIds,
+        members,
+        maxSize: party.maxSize,
+        pendingInvites: Array.from(party.pendingInvites)
+    };
+}
+/** Emit party update to all members. Hook for when CEF/emit is wired. */
+function emitToParty(party, event, data) {
+    const payload = JSON.stringify(data);
+    party.memberIds.forEach((id) => {
+        const p = mp.players.at(id);
+        if (p && mp.players.exists(p)) {
+            p.call("client::party:emit", [event, payload]);
+        }
+    });
+}
+/**
+ * Create party. Returns result; emits to creator on success.
+ */
+function onPartyCreate(player) {
+    const result = (0, PartyManager_1.createParty)(player);
+    if (result.ok) {
+        const party = (0, PartyManager_1.getPartyByPlayer)(player);
+        if (party)
+            emitToParty(party, "partyUpdated", partyToClient(party));
+        return { ok: true, party: party ? partyToClient(party) : undefined };
+    }
+    return { ok: false, reason: result.reason };
+}
+/**
+ * Leader invites target. Emits to both on success.
+ */
+function onPartyInvite(leader, target) {
+    const result = (0, PartyManager_1.invitePlayer)(leader, target);
+    if (result.ok) {
+        const party = (0, PartyManager_1.getPartyByPlayer)(leader);
+        if (party) {
+            emitToParty(party, "partyUpdated", partyToClient(party));
+            if (mp.players.exists(target)) {
+                target.call("client::party:inviteReceived", [partyToClient(party), leader.name]);
+            }
+        }
+        return { ok: true };
+    }
+    return { ok: false, reason: result.reason };
+}
+/**
+ * Target accepts invite. Emits to party on success.
+ */
+function onPartyAccept(player, partyId) {
+    const result = (0, PartyManager_1.acceptInvite)(player, partyId);
+    if (result.ok) {
+        const party = (0, PartyManager_1.getPartyById)(partyId);
+        if (party)
+            emitToParty(party, "partyUpdated", partyToClient(party));
+        const p = (0, PartyManager_1.getPartyByPlayer)(player);
+        return { ok: true, party: p ? partyToClient(p) : undefined };
+    }
+    return { ok: false, reason: result.reason };
+}
+/**
+ * Target declines invite.
+ */
+function onPartyDecline(player, partyId) {
+    const result = (0, PartyManager_1.declineInvite)(player, partyId);
+    return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+}
+/**
+ * Player leaves party. Emits to remaining members on success.
+ */
+function onPartyLeave(player) {
+    const party = (0, PartyManager_1.getPartyByPlayer)(player);
+    const result = (0, PartyManager_1.leaveParty)(player);
+    if (result.ok && party) {
+        const remaining = (0, PartyManager_1.getPartyById)(party.partyId);
+        if (remaining)
+            emitToParty(remaining, "partyUpdated", partyToClient(remaining));
+        return { ok: true };
+    }
+    return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+}
+/**
+ * Leader kicks target. Emits to party on success.
+ */
+function onPartyKick(leader, target) {
+    const result = (0, PartyManager_1.kickMember)(leader, target);
+    if (result.ok) {
+        const party = (0, PartyManager_1.getPartyByPlayer)(leader);
+        if (party)
+            emitToParty(party, "partyUpdated", partyToClient(party));
+        if (mp.players.exists(target)) {
+            target.call("client::party:kicked", []);
+        }
+        return { ok: true };
+    }
+    return { ok: false, reason: result.reason };
+}
+/**
+ * Leader disbands party. Emits to all former members.
+ */
+function onPartyDisband(leader) {
+    const party = (0, PartyManager_1.getPartyByPlayer)(leader);
+    if (!party || party.leaderId !== leader.id)
+        return { ok: false, reason: "Not party leader" };
+    const memberIds = [...party.memberIds];
+    const result = (0, PartyManager_1.disbandParty)(party.partyId);
+    if (result.ok) {
+        memberIds.forEach((id) => {
+            const p = mp.players.at(id);
+            if (p && mp.players.exists(p))
+                p.call("client::party:disbanded", []);
+        });
+        return { ok: true };
+    }
+    return { ok: false, reason: result.reason };
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/party/PartyManager.ts"
+/*!*****************************************************!*\
+  !*** ./source/server/modules/party/PartyManager.ts ***!
+  \*****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createParty = createParty;
+exports.invitePlayer = invitePlayer;
+exports.acceptInvite = acceptInvite;
+exports.declineInvite = declineInvite;
+exports.leaveParty = leaveParty;
+exports.kickMember = kickMember;
+exports.disbandParty = disbandParty;
+exports.onPlayerDisconnect = onPlayerDisconnect;
+exports.getPartyByPlayer = getPartyByPlayer;
+exports.getPartyById = getPartyById;
+exports.isLeader = isLeader;
+exports.getPartyMemberIds = getPartyMemberIds;
+exports.canPartyQueue = canPartyQueue;
+const QueueManager_1 = __webpack_require__(/*! @modules/matchmaking/QueueManager */ "./source/server/modules/matchmaking/QueueManager.ts");
+const MatchManager_1 = __webpack_require__(/*! @modules/matches/MatchManager */ "./source/server/modules/matches/MatchManager.ts");
+const parties = new Map();
+const playerToParty = new Map();
+let nextPartyId = 1;
+const DEFAULT_MAX_SIZE = 5;
+function log(msg) {
+    if (process.env.DEBUG_MODE)
+        console.log(`[Party] ${msg}`);
+}
+function generatePartyId() {
+    return `party_${nextPartyId++}`;
+}
+/**
+ * Create a new party with the given player as leader.
+ */
+function createParty(player) {
+    if (playerToParty.has(player.id)) {
+        return { ok: false, reason: "Already in a party" };
+    }
+    const queueInfo = (0, QueueManager_1.getQueueForPlayerInfo)(player);
+    if (queueInfo) {
+        return { ok: false, reason: "Cannot create party while in queue" };
+    }
+    if ((0, MatchManager_1.isPlayerInMatch)(player)) {
+        return { ok: false, reason: "Cannot create party while in match" };
+    }
+    const partyId = generatePartyId();
+    const party = {
+        partyId,
+        leaderId: player.id,
+        memberIds: [player.id],
+        maxSize: DEFAULT_MAX_SIZE,
+        pendingInvites: new Set()
+    };
+    parties.set(partyId, party);
+    playerToParty.set(player.id, partyId);
+    log(`Party created: ${partyId} by ${player.name} (${player.id})`);
+    return { ok: true };
+}
+/**
+ * Leader invites a target to the party.
+ */
+function invitePlayer(leader, target) {
+    const party = getPartyByLeader(leader);
+    if (!party)
+        return { ok: false, reason: "Not a party leader" };
+    if (party.leaderId !== leader.id)
+        return { ok: false, reason: "Only leader can invite" };
+    if (party.memberIds.length >= party.maxSize)
+        return { ok: false, reason: "Party is full" };
+    if (party.memberIds.includes(target.id))
+        return { ok: false, reason: "Player already in party" };
+    if (party.pendingInvites.has(target.id))
+        return { ok: false, reason: "Invite already pending" };
+    if (playerToParty.has(target.id))
+        return { ok: false, reason: "Player is in another party" };
+    const targetQueue = (0, QueueManager_1.getQueueForPlayerInfo)(target);
+    if (targetQueue)
+        return { ok: false, reason: "Player is in queue" };
+    if ((0, MatchManager_1.isPlayerInMatch)(target))
+        return { ok: false, reason: "Player is in a match" };
+    party.pendingInvites.add(target.id);
+    return { ok: true };
+}
+/**
+ * Target accepts an invite to a party.
+ */
+function acceptInvite(player, partyId) {
+    const party = parties.get(partyId);
+    if (!party)
+        return { ok: false, reason: "Party not found" };
+    if (!party.pendingInvites.has(player.id))
+        return { ok: false, reason: "No pending invite" };
+    if (playerToParty.has(player.id))
+        return { ok: false, reason: "Already in a party" };
+    if (party.memberIds.length >= party.maxSize)
+        return { ok: false, reason: "Party is full" };
+    const queueInfo = (0, QueueManager_1.getQueueForPlayerInfo)(player);
+    if (queueInfo)
+        return { ok: false, reason: "Cannot accept while in queue" };
+    if ((0, MatchManager_1.isPlayerInMatch)(player))
+        return { ok: false, reason: "Cannot accept while in match" };
+    party.pendingInvites.delete(player.id);
+    party.memberIds.push(player.id);
+    playerToParty.set(player.id, partyId);
+    return { ok: true };
+}
+/**
+ * Target declines an invite.
+ */
+function declineInvite(player, partyId) {
+    const party = parties.get(partyId);
+    if (!party)
+        return { ok: false, reason: "Party not found" };
+    if (!party.pendingInvites.has(player.id))
+        return { ok: false, reason: "No pending invite" };
+    party.pendingInvites.delete(player.id);
+    return { ok: true };
+}
+/**
+ * Player leaves their party. If leader leaves, next member becomes leader or party disbands.
+ */
+function leaveParty(player) {
+    const party = getPartyByPlayer(player);
+    if (!party)
+        return { ok: false, reason: "Not in a party" };
+    const idx = party.memberIds.indexOf(player.id);
+    if (idx < 0)
+        return { ok: false, reason: "Not in party members" };
+    party.memberIds.splice(idx, 1);
+    playerToParty.delete(player.id);
+    if (party.memberIds.length === 0) {
+        parties.delete(party.partyId);
+        log(`Party deleted (empty): ${party.partyId}`);
+        return { ok: true };
+    }
+    if (party.leaderId === player.id) {
+        party.leaderId = party.memberIds[0];
+        log(`Leader transfer: ${party.partyId} -> ${party.leaderId}`);
+    }
+    return { ok: true };
+}
+/**
+ * Leader kicks a member.
+ */
+function kickMember(leader, target) {
+    const party = getPartyByLeader(leader);
+    if (!party)
+        return { ok: false, reason: "Not a party leader" };
+    if (party.leaderId !== leader.id)
+        return { ok: false, reason: "Only leader can kick" };
+    if (target.id === leader.id)
+        return { ok: false, reason: "Cannot kick yourself" };
+    if (!party.memberIds.includes(target.id))
+        return { ok: false, reason: "Player not in party" };
+    party.memberIds = party.memberIds.filter((id) => id !== target.id);
+    playerToParty.delete(target.id);
+    if (party.memberIds.length === 0) {
+        parties.delete(party.partyId);
+    }
+    return { ok: true };
+}
+/**
+ * Leader disbands the party. All members are removed.
+ */
+function disbandParty(partyId) {
+    const party = parties.get(partyId);
+    if (!party)
+        return { ok: false, reason: "Party not found" };
+    party.memberIds.forEach((id) => playerToParty.delete(id));
+    parties.delete(partyId);
+    log(`Party disbanded: ${partyId}`);
+    return { ok: true };
+}
+/**
+ * Called when a player disconnects. Removes from party, handles leader transfer,
+ * invite cleanup, and party deletion. Returns partyId if player was in a party.
+ */
+function onPlayerDisconnect(playerId) {
+    parties.forEach((party) => {
+        party.pendingInvites.delete(playerId);
+    });
+    const partyId = playerToParty.get(playerId);
+    if (!partyId)
+        return;
+    const party = parties.get(partyId);
+    if (!party) {
+        playerToParty.delete(playerId);
+        return;
+    }
+    const idx = party.memberIds.indexOf(playerId);
+    if (idx < 0) {
+        playerToParty.delete(playerId);
+        return;
+    }
+    party.memberIds.splice(idx, 1);
+    playerToParty.delete(playerId);
+    if (party.memberIds.length === 0) {
+        parties.delete(partyId);
+        log(`Party deleted (disconnect): ${partyId}`);
+        return;
+    }
+    if (party.leaderId === playerId) {
+        party.leaderId = party.memberIds[0];
+        log(`Leader transfer (disconnect): ${partyId} -> ${party.leaderId}`);
+    }
+}
+/**
+ * Get the party a player belongs to.
+ */
+function getPartyByPlayer(player) {
+    const partyId = playerToParty.get(player.id);
+    return partyId ? parties.get(partyId) : undefined;
+}
+/**
+ * Get party by ID.
+ */
+function getPartyById(partyId) {
+    return parties.get(partyId);
+}
+/**
+ * Check if player is the leader of their party.
+ */
+function isLeader(player) {
+    const party = getPartyByPlayer(player);
+    return party ? party.leaderId === player.id : false;
+}
+/**
+ * Get party where player is leader (for invite/kick validation).
+ */
+function getPartyByLeader(leader) {
+    const party = getPartyByPlayer(leader);
+    return party && party.leaderId === leader.id ? party : undefined;
+}
+/**
+ * Get all member IDs for a party (for queue integration).
+ */
+function getPartyMemberIds(partyId) {
+    const party = parties.get(partyId);
+    return party ? [...party.memberIds] : [];
+}
+/**
+ * Check if a party can queue. All members must be eligible (not in queue, not in match, have character).
+ */
+function canPartyQueue(partyId, size) {
+    const party = parties.get(partyId);
+    if (!party)
+        return { ok: false, reason: "Party not found" };
+    if (party.memberIds.length > size)
+        return { ok: false, reason: "Party too large for this queue" };
+    if (party.memberIds.length < 1)
+        return { ok: false, reason: "Party has no members" };
+    for (const id of party.memberIds) {
+        const p = mp.players.at(id);
+        if (!p || !mp.players.exists(p))
+            return { ok: false, reason: "A party member is offline" };
+        if (!p.character)
+            return { ok: false, reason: "A party member has no character" };
+        if ((0, QueueManager_1.getQueueForPlayerInfo)(p))
+            return { ok: false, reason: "A party member is already in queue" };
+        if ((0, MatchManager_1.isPlayerInMatch)(p))
+            return { ok: false, reason: "A party member is in a match" };
+    }
+    return { ok: true };
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/seasons/PlayerSeasonReward.entity.ts"
+/*!********************************************************************!*\
+  !*** ./source/server/modules/seasons/PlayerSeasonReward.entity.ts ***!
+  \********************************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PlayerSeasonRewardEntity = void 0;
+const typeorm_1 = __webpack_require__(/*! typeorm */ "typeorm");
+/**
+ * Season-end reward snapshot per character per season. One row per player per season.
+ */
+let PlayerSeasonRewardEntity = class PlayerSeasonRewardEntity {
+    id;
+    seasonId;
+    characterId;
+    finalRankTier;
+    rewardXp = 0;
+    rewardTitle = null;
+    generatedAt;
+    claimed = false;
+    claimedAt = null;
+};
+exports.PlayerSeasonRewardEntity = PlayerSeasonRewardEntity;
+__decorate([
+    (0, typeorm_1.PrimaryGeneratedColumn)(),
+    __metadata("design:type", Number)
+], PlayerSeasonRewardEntity.prototype, "id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 32 }),
+    __metadata("design:type", String)
+], PlayerSeasonRewardEntity.prototype, "seasonId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int" }),
+    __metadata("design:type", Number)
+], PlayerSeasonRewardEntity.prototype, "characterId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 32 }),
+    __metadata("design:type", String)
+], PlayerSeasonRewardEntity.prototype, "finalRankTier", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonRewardEntity.prototype, "rewardXp", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 64, nullable: true }),
+    __metadata("design:type", Object)
+], PlayerSeasonRewardEntity.prototype, "rewardTitle", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerSeasonRewardEntity.prototype, "generatedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "boolean", default: false }),
+    __metadata("design:type", Boolean)
+], PlayerSeasonRewardEntity.prototype, "claimed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "timestamp", nullable: true }),
+    __metadata("design:type", Object)
+], PlayerSeasonRewardEntity.prototype, "claimedAt", void 0);
+exports.PlayerSeasonRewardEntity = PlayerSeasonRewardEntity = __decorate([
+    (0, typeorm_1.Entity)({ name: "player_season_rewards" }),
+    (0, typeorm_1.Unique)(["seasonId", "characterId"])
+], PlayerSeasonRewardEntity);
+
+
+/***/ },
+
+/***/ "./source/server/modules/seasons/PlayerSeasonStats.entity.ts"
+/*!*******************************************************************!*\
+  !*** ./source/server/modules/seasons/PlayerSeasonStats.entity.ts ***!
+  \*******************************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PlayerSeasonStatsEntity = void 0;
+const typeorm_1 = __webpack_require__(/*! typeorm */ "typeorm");
+/**
+ * Seasonal stats per character per season. Separate from lifetime PlayerStats.
+ */
+let PlayerSeasonStatsEntity = class PlayerSeasonStatsEntity {
+    seasonId;
+    characterId;
+    seasonalMMR = 1000;
+    seasonalRankTier = "Unranked";
+    seasonalPlacementMatchesPlayed = 0;
+    seasonalWins = 0;
+    seasonalLosses = 0;
+    seasonalMatchesPlayed = 0;
+    seasonalKills = 0;
+    seasonalDeaths = 0;
+    seasonalXp = 0;
+    seasonalLevel = 1;
+    createdAt;
+    updatedAt;
+};
+exports.PlayerSeasonStatsEntity = PlayerSeasonStatsEntity;
+__decorate([
+    (0, typeorm_1.PrimaryColumn)({ type: "varchar", length: 32 }),
+    __metadata("design:type", String)
+], PlayerSeasonStatsEntity.prototype, "seasonId", void 0);
+__decorate([
+    (0, typeorm_1.PrimaryColumn)({ type: "int" }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "characterId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 1000 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalMMR", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 32, default: "Unranked" }),
+    __metadata("design:type", String)
+], PlayerSeasonStatsEntity.prototype, "seasonalRankTier", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalPlacementMatchesPlayed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalWins", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalLosses", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalMatchesPlayed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalKills", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalDeaths", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalXp", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 1 }),
+    __metadata("design:type", Number)
+], PlayerSeasonStatsEntity.prototype, "seasonalLevel", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerSeasonStatsEntity.prototype, "createdAt", void 0);
+__decorate([
+    (0, typeorm_1.UpdateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerSeasonStatsEntity.prototype, "updatedAt", void 0);
+exports.PlayerSeasonStatsEntity = PlayerSeasonStatsEntity = __decorate([
+    (0, typeorm_1.Entity)({ name: "player_season_stats" })
+], PlayerSeasonStatsEntity);
+
+
+/***/ },
+
+/***/ "./source/server/modules/seasons/SeasonConfig.ts"
+/*!*******************************************************!*\
+  !*** ./source/server/modules/seasons/SeasonConfig.ts ***!
+  \*******************************************************/
+(__unused_webpack_module, exports) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEFAULT_SEASON = void 0;
+exports.getActiveSeasonConfig = getActiveSeasonConfig;
+exports.setActiveSeasonConfig = setActiveSeasonConfig;
+/** Current active season. Set via SeasonManager.startNewSeason(). */
+let activeSeason = null;
+function getActiveSeasonConfig() {
+    return activeSeason;
+}
+function setActiveSeasonConfig(season) {
+    activeSeason = season;
+}
+/** Default first season for initial setup. */
+exports.DEFAULT_SEASON = {
+    seasonId: "s1",
+    name: "Season 1",
+    startAt: 0,
+    endAt: 9999999999999,
+    active: true
+};
+
+
+/***/ },
+
+/***/ "./source/server/modules/seasons/SeasonManager.ts"
+/*!********************************************************!*\
+  !*** ./source/server/modules/seasons/SeasonManager.ts ***!
+  \********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getActiveSeason = getActiveSeason;
+exports.isSeasonActive = isSeasonActive;
+exports.startNewSeason = startNewSeason;
+exports.ensureDefaultSeason = ensureDefaultSeason;
+exports.ensureSeasonStats = ensureSeasonStats;
+exports.recordSeasonalKill = recordSeasonalKill;
+exports.recordSeasonalDeath = recordSeasonalDeath;
+exports.updateSeasonalRankedMatchResult = updateSeasonalRankedMatchResult;
+exports.addSeasonalXp = addSeasonalXp;
+exports.applySeasonalMatchXp = applySeasonalMatchXp;
+/**
+ * Season management. Single active season, manual reset.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerSeasonStats_entity_1 = __webpack_require__(/*! ./PlayerSeasonStats.entity */ "./source/server/modules/seasons/PlayerSeasonStats.entity.ts");
+const SeasonConfig_1 = __webpack_require__(/*! ./SeasonConfig */ "./source/server/modules/seasons/SeasonConfig.ts");
+const StatsManager_1 = __webpack_require__(/*! @modules/stats/StatsManager */ "./source/server/modules/stats/StatsManager.ts");
+const PLACEMENT_MATCHES = 5;
+const MMR_WIN = 25;
+const MMR_LOSS = -20;
+const MMR_MODIFIER_MIN = -5;
+const MMR_MODIFIER_MAX = 5;
+function getActiveSeason() {
+    return (0, SeasonConfig_1.getActiveSeasonConfig)();
+}
+function isSeasonActive() {
+    const s = (0, SeasonConfig_1.getActiveSeasonConfig)();
+    return !!(s && s.active);
+}
+/**
+ * Start a new season. Existing lifetime stats remain. New seasonal rows begin fresh.
+ */
+function startNewSeason(season) {
+    (0, SeasonConfig_1.setActiveSeasonConfig)(season);
+}
+/**
+ * Initialize default season if none set. Call once at server startup.
+ */
+function ensureDefaultSeason() {
+    if (!(0, SeasonConfig_1.getActiveSeasonConfig)()) {
+        (0, SeasonConfig_1.setActiveSeasonConfig)(SeasonConfig_1.DEFAULT_SEASON);
+    }
+}
+async function ensureSeasonStats(seasonId, characterId) {
+    const repo = _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity);
+    let stats = await repo.findOne({ where: { seasonId, characterId } });
+    if (!stats) {
+        stats = repo.create({
+            seasonId,
+            characterId,
+            seasonalMMR: 1000,
+            seasonalRankTier: "Unranked",
+            seasonalPlacementMatchesPlayed: 0,
+            seasonalWins: 0,
+            seasonalLosses: 0,
+            seasonalMatchesPlayed: 0,
+            seasonalKills: 0,
+            seasonalDeaths: 0,
+            seasonalXp: 0,
+            seasonalLevel: 1
+        });
+        await repo.save(stats);
+    }
+    return stats;
+}
+async function recordSeasonalKill(seasonId, characterId) {
+    const stats = await ensureSeasonStats(seasonId, characterId);
+    stats.seasonalKills++;
+    await _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity).save(stats);
+}
+async function recordSeasonalDeath(seasonId, characterId) {
+    const stats = await ensureSeasonStats(seasonId, characterId);
+    stats.seasonalDeaths++;
+    await _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity).save(stats);
+}
+async function updateSeasonalRankedMatchResult(seasonId, inputs) {
+    const repo = _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity);
+    for (const input of inputs) {
+        const stats = await ensureSeasonStats(seasonId, input.characterId);
+        const oldMMR = stats.seasonalMMR;
+        const placementBefore = stats.seasonalPlacementMatchesPlayed;
+        const kdDiff = input.kills - input.deaths;
+        const modifier = Math.max(MMR_MODIFIER_MIN, Math.min(MMR_MODIFIER_MAX, kdDiff));
+        let delta;
+        if (input.isWin)
+            delta = MMR_WIN + modifier;
+        else if (input.isLoss)
+            delta = MMR_LOSS + modifier;
+        else
+            delta = 0;
+        const newMMR = Math.max(0, oldMMR + delta);
+        stats.seasonalMMR = newMMR;
+        stats.seasonalPlacementMatchesPlayed = Math.min(PLACEMENT_MATCHES, placementBefore + 1);
+        stats.seasonalRankTier = (0, StatsManager_1.getRankTierFromMmr)(newMMR, stats.seasonalPlacementMatchesPlayed);
+        if (input.isWin) {
+            stats.seasonalWins++;
+        }
+        else if (input.isLoss) {
+            stats.seasonalLosses++;
+        }
+        stats.seasonalMatchesPlayed++;
+        await repo.save(stats);
+    }
+}
+const XP_WIN = 150;
+const XP_LOSS = 80;
+async function addSeasonalXp(seasonId, characterId, amount, isWin, isLoss) {
+    const stats = await ensureSeasonStats(seasonId, characterId);
+    const repo = _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity);
+    const oldLevel = stats.seasonalLevel;
+    let xp = stats.seasonalXp + amount;
+    let level = stats.seasonalLevel;
+    const getRequired = (lvl) => 500 + (lvl - 1) * 150;
+    while (level < 999) {
+        const required = getRequired(level);
+        if (xp < required)
+            break;
+        xp -= required;
+        level++;
+    }
+    stats.seasonalXp = xp;
+    stats.seasonalLevel = level;
+    await repo.save(stats);
+    return {
+        xpGained: amount,
+        newXp: xp,
+        newLevel: level,
+        leveledUp: level > oldLevel
+    };
+}
+async function applySeasonalMatchXp(seasonId, characterId, isWin, isLoss) {
+    const amount = isWin ? XP_WIN : isLoss ? XP_LOSS : 0;
+    if (amount <= 0)
+        return { xpGained: 0 };
+    const result = await addSeasonalXp(seasonId, characterId, amount, isWin, isLoss);
+    return { xpGained: result.xpGained };
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/seasons/SeasonRewardsConfig.ts"
+/*!**************************************************************!*\
+  !*** ./source/server/modules/seasons/SeasonRewardsConfig.ts ***!
+  \**************************************************************/
+(__unused_webpack_module, exports) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SEASON_TIER_REWARDS = void 0;
+exports.getRewardForTier = getRewardForTier;
+exports.SEASON_TIER_REWARDS = {
+    Bronze: { rewardXp: 100, rewardTitle: "Bronze" },
+    Silver: { rewardXp: 200, rewardTitle: "Silver" },
+    Gold: { rewardXp: 350, rewardTitle: "Gold" },
+    Platinum: { rewardXp: 500, rewardTitle: "Platinum" },
+    Diamond: { rewardXp: 750, rewardTitle: "Diamond" },
+    Elite: { rewardXp: 1000, rewardTitle: "Elite" }
+};
+/** Unranked gets no reward. */
+function getRewardForTier(tier) {
+    const t = exports.SEASON_TIER_REWARDS[tier];
+    return t ?? null;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/seasons/SeasonRewardsManager.ts"
+/*!***************************************************************!*\
+  !*** ./source/server/modules/seasons/SeasonRewardsManager.ts ***!
+  \***************************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.generateSeasonRewards = generateSeasonRewards;
+exports.getSeasonRewardsForCharacter = getSeasonRewardsForCharacter;
+exports.claimSeasonReward = claimSeasonReward;
+/**
+ * Season-end reward generation and claim.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerSeasonStats_entity_1 = __webpack_require__(/*! ./PlayerSeasonStats.entity */ "./source/server/modules/seasons/PlayerSeasonStats.entity.ts");
+const PlayerSeasonReward_entity_1 = __webpack_require__(/*! ./PlayerSeasonReward.entity */ "./source/server/modules/seasons/PlayerSeasonReward.entity.ts");
+const SeasonRewardsConfig_1 = __webpack_require__(/*! ./SeasonRewardsConfig */ "./source/server/modules/seasons/SeasonRewardsConfig.ts");
+const ProgressionManager_1 = __webpack_require__(/*! @modules/stats/ProgressionManager */ "./source/server/modules/stats/ProgressionManager.ts");
+const SeasonConfig_1 = __webpack_require__(/*! ./SeasonConfig */ "./source/server/modules/seasons/SeasonConfig.ts");
+/**
+ * Generate rewards for all players who participated in a season.
+ * Uses final seasonal rank tier from PlayerSeasonStats.
+ * Idempotent: skips players who already have a reward for this season.
+ */
+async function generateSeasonRewards(seasonId, seasonName) {
+    const statsRepo = _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity);
+    const rewardRepo = _api_1.RAGERP.database.getRepository(PlayerSeasonReward_entity_1.PlayerSeasonRewardEntity);
+    const allStats = await statsRepo.find({
+        where: { seasonId },
+        select: ["characterId", "seasonalRankTier"]
+    });
+    let generated = 0;
+    for (const s of allStats) {
+        const existing = await rewardRepo.findOne({ where: { seasonId, characterId: s.characterId } });
+        if (existing)
+            continue;
+        const reward = (0, SeasonRewardsConfig_1.getRewardForTier)(s.seasonalRankTier);
+        if (!reward)
+            continue;
+        const entity = rewardRepo.create({
+            seasonId,
+            characterId: s.characterId,
+            finalRankTier: s.seasonalRankTier,
+            rewardXp: reward.rewardXp,
+            rewardTitle: reward.rewardTitle,
+            claimed: false
+        });
+        await rewardRepo.save(entity);
+        generated++;
+    }
+    return generated;
+}
+function getSeasonDisplayName(seasonId) {
+    const active = (0, SeasonConfig_1.getActiveSeasonConfig)();
+    if (active && active.seasonId === seasonId)
+        return active.name;
+    const num = seasonId.replace(/^s/i, "") || seasonId;
+    return /^\d+$/.test(num) ? `Season ${num}` : seasonId;
+}
+/**
+ * Get unclaimed (and claimed) season rewards for a character.
+ */
+async function getSeasonRewardsForCharacter(characterId) {
+    const rewardRepo = _api_1.RAGERP.database.getRepository(PlayerSeasonReward_entity_1.PlayerSeasonRewardEntity);
+    const rewards = await rewardRepo.find({
+        where: { characterId },
+        order: { generatedAt: "DESC" }
+    });
+    return rewards.map((r) => ({
+        id: r.id,
+        seasonId: r.seasonId,
+        seasonName: getSeasonDisplayName(r.seasonId),
+        finalRankTier: r.finalRankTier,
+        rewardXp: r.rewardXp,
+        rewardTitle: r.rewardTitle,
+        claimed: r.claimed,
+        claimedAt: r.claimedAt
+    }));
+}
+/**
+ * Claim a season reward. Awards XP and marks as claimed.
+ * Prevents duplicate claims.
+ */
+async function claimSeasonReward(characterId, rewardId) {
+    const rewardRepo = _api_1.RAGERP.database.getRepository(PlayerSeasonReward_entity_1.PlayerSeasonRewardEntity);
+    const reward = await rewardRepo.findOne({ where: { id: rewardId, characterId } });
+    if (!reward) {
+        return { success: false, error: "Reward not found." };
+    }
+    if (reward.claimed) {
+        return { success: false, error: "Already claimed." };
+    }
+    if (reward.rewardXp > 0) {
+        const result = await (0, ProgressionManager_1.addXp)(characterId, reward.rewardXp);
+        reward.claimed = true;
+        reward.claimedAt = new Date();
+        await rewardRepo.save(reward);
+        return {
+            success: true,
+            xpGained: result.xpGained,
+            newLevel: result.newLevel,
+            leveledUp: result.leveledUp
+        };
+    }
+    reward.claimed = true;
+    reward.claimedAt = new Date();
+    await rewardRepo.save(reward);
+    return { success: true };
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/ChallengeDefinitions.ts"
+/*!*************************************************************!*\
+  !*** ./source/server/modules/stats/ChallengeDefinitions.ts ***!
+  \*************************************************************/
+(__unused_webpack_module, exports) {
+
+
+/**
+ * Static challenge definitions for Hopouts daily/weekly challenges.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ALL_CHALLENGES = exports.WEEKLY_CHALLENGES = exports.DAILY_CHALLENGES = void 0;
+exports.getChallengeDef = getChallengeDef;
+exports.getChallengesByStatKey = getChallengesByStatKey;
+exports.DAILY_CHALLENGES = [
+    { key: "play_matches_3", label: "Play 3 Matches", type: "daily", target: 3, rewardXp: 150, statKey: "play_matches" },
+    { key: "win_matches_2", label: "Win 2 Matches", type: "daily", target: 2, rewardXp: 150, statKey: "win_matches" },
+    { key: "get_kills_10", label: "Get 10 Kills", type: "daily", target: 10, rewardXp: 150, statKey: "get_kills" },
+    { key: "headshots_3", label: "Get 3 Headshots", type: "daily", target: 3, rewardXp: 150, statKey: "headshots" }
+];
+exports.WEEKLY_CHALLENGES = [
+    { key: "play_matches_10", label: "Play 10 Matches", type: "weekly", target: 10, rewardXp: 500, statKey: "play_matches" },
+    { key: "win_matches_5", label: "Win 5 Matches", type: "weekly", target: 5, rewardXp: 500, statKey: "win_matches" },
+    { key: "get_kills_30", label: "Get 30 Kills", type: "weekly", target: 30, rewardXp: 500, statKey: "get_kills" },
+    { key: "win_clutch_1", label: "Win 1 Clutch", type: "weekly", target: 1, rewardXp: 500, statKey: "win_clutch" }
+];
+exports.ALL_CHALLENGES = [...exports.DAILY_CHALLENGES, ...exports.WEEKLY_CHALLENGES];
+function getChallengeDef(key) {
+    return exports.ALL_CHALLENGES.find((c) => c.key === key);
+}
+function getChallengesByStatKey(statKey) {
+    return exports.ALL_CHALLENGES.filter((c) => c.statKey === statKey);
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/ChallengeManager.ts"
+/*!*********************************************************!*\
+  !*** ./source/server/modules/stats/ChallengeManager.ts ***!
+  \*********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ensureActiveChallenges = ensureActiveChallenges;
+exports.getChallengesForCharacter = getChallengesForCharacter;
+exports.incrementChallengeProgress = incrementChallengeProgress;
+exports.completeChallengeIfNeeded = completeChallengeIfNeeded;
+exports.claimChallengeReward = claimChallengeReward;
+/**
+ * Daily/weekly challenges for Hopouts. Rewards XP on claim.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerChallengeProgress_entity_1 = __webpack_require__(/*! ./PlayerChallengeProgress.entity */ "./source/server/modules/stats/PlayerChallengeProgress.entity.ts");
+const ProgressionManager_1 = __webpack_require__(/*! ./ProgressionManager */ "./source/server/modules/stats/ProgressionManager.ts");
+const ChallengeDefinitions_1 = __webpack_require__(/*! ./ChallengeDefinitions */ "./source/server/modules/stats/ChallengeDefinitions.ts");
+function getNextDailyReset() {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(0, 0, 0, 0);
+    return tomorrow.getTime();
+}
+function getNextWeeklyReset() {
+    const now = new Date();
+    const day = now.getUTCDay();
+    const daysUntilMonday = day === 0 ? 1 : day === 1 ? 7 : 8 - day;
+    const nextMonday = new Date(now);
+    nextMonday.setUTCDate(nextMonday.getUTCDate() + daysUntilMonday);
+    nextMonday.setUTCHours(0, 0, 0, 0);
+    return nextMonday.getTime();
+}
+function getResetAt(type) {
+    return type === "daily" ? getNextDailyReset() : getNextWeeklyReset();
+}
+async function ensureActiveChallenges(characterId) {
+    const repo = _api_1.RAGERP.database.getRepository(PlayerChallengeProgress_entity_1.PlayerChallengeProgressEntity);
+    const now = Date.now();
+    const existing = await repo.find({ where: { characterId } });
+    for (const row of existing) {
+        if (row.resetAt < now) {
+            await repo.remove(row);
+        }
+    }
+    const remaining = await repo.find({ where: { characterId } });
+    const existingKeys = new Set(remaining.map((r) => r.challengeKey));
+    for (const def of ChallengeDefinitions_1.ALL_CHALLENGES) {
+        if (existingKeys.has(def.key))
+            continue;
+        const row = repo.create({
+            characterId,
+            challengeKey: def.key,
+            challengeType: def.type,
+            progress: 0,
+            target: def.target,
+            completed: false,
+            claimed: false,
+            resetAt: getResetAt(def.type)
+        });
+        await repo.save(row);
+    }
+}
+async function getChallengesForCharacter(characterId) {
+    await ensureActiveChallenges(characterId);
+    const repo = _api_1.RAGERP.database.getRepository(PlayerChallengeProgress_entity_1.PlayerChallengeProgressEntity);
+    const rows = await repo.find({ where: { characterId }, order: { challengeType: "ASC", challengeKey: "ASC" } });
+    return rows.map((r) => {
+        const def = (0, ChallengeDefinitions_1.getChallengeDef)(r.challengeKey);
+        return {
+            id: r.id,
+            challengeKey: r.challengeKey,
+            label: def?.label ?? r.challengeKey,
+            challengeType: r.challengeType,
+            progress: r.progress,
+            target: r.target,
+            completed: r.completed,
+            claimed: r.claimed,
+            rewardXp: def?.rewardXp ?? 0,
+            resetAt: Number(r.resetAt)
+        };
+    });
+}
+async function incrementChallengeProgress(characterId, statKey, amount = 1) {
+    const challenges = (0, ChallengeDefinitions_1.getChallengesByStatKey)(statKey);
+    if (challenges.length === 0)
+        return;
+    const repo = _api_1.RAGERP.database.getRepository(PlayerChallengeProgress_entity_1.PlayerChallengeProgressEntity);
+    const now = Date.now();
+    for (const def of challenges) {
+        let row = await repo.findOne({ where: { characterId, challengeKey: def.key } });
+        if (!row) {
+            await ensureActiveChallenges(characterId);
+            row = await repo.findOne({ where: { characterId, challengeKey: def.key } });
+        }
+        if (!row || row.claimed)
+            continue;
+        if (row.resetAt < now) {
+            row.progress = 0;
+            row.completed = false;
+            row.resetAt = getResetAt(def.type);
+        }
+        row.progress = Math.min(row.progress + amount, row.target);
+        if (row.progress >= row.target)
+            row.completed = true;
+        await repo.save(row);
+    }
+}
+async function completeChallengeIfNeeded(characterId, challengeKey) {
+    const def = (0, ChallengeDefinitions_1.getChallengeDef)(challengeKey);
+    if (!def)
+        return false;
+    const repo = _api_1.RAGERP.database.getRepository(PlayerChallengeProgress_entity_1.PlayerChallengeProgressEntity);
+    const row = await repo.findOne({ where: { characterId, challengeKey } });
+    if (!row || row.claimed)
+        return false;
+    if (row.progress >= row.target) {
+        row.completed = true;
+        await repo.save(row);
+        return true;
+    }
+    return false;
+}
+async function claimChallengeReward(characterId, challengeKey) {
+    const def = (0, ChallengeDefinitions_1.getChallengeDef)(challengeKey);
+    if (!def)
+        return { ok: false };
+    const repo = _api_1.RAGERP.database.getRepository(PlayerChallengeProgress_entity_1.PlayerChallengeProgressEntity);
+    const row = await repo.findOne({ where: { characterId, challengeKey } });
+    if (!row || row.claimed)
+        return { ok: false };
+    if (row.progress < row.target)
+        return { ok: false };
+    row.claimed = true;
+    await repo.save(row);
+    await (0, ProgressionManager_1.addXp)(characterId, def.rewardXp);
+    return { ok: true, xpAwarded: def.rewardXp };
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/LeaderboardManager.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modules/stats/LeaderboardManager.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getTopPlayers = getTopPlayers;
+exports.getPlayerRank = getPlayerRank;
+/**
+ * Leaderboard for ranked Hopouts. Top players by MMR.
+ * Uses seasonal stats when a season is active.
+ */
+const typeorm_1 = __webpack_require__(/*! typeorm */ "typeorm");
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerStats_entity_1 = __webpack_require__(/*! ./PlayerStats.entity */ "./source/server/modules/stats/PlayerStats.entity.ts");
+const PlayerSeasonStats_entity_1 = __webpack_require__(/*! ../seasons/PlayerSeasonStats.entity */ "./source/server/modules/seasons/PlayerSeasonStats.entity.ts");
+const Character_entity_1 = __webpack_require__(/*! @entities/Character.entity */ "./source/server/database/entity/Character.entity.ts");
+const SeasonManager_1 = __webpack_require__(/*! ../seasons/SeasonManager */ "./source/server/modules/seasons/SeasonManager.ts");
+async function getTopPlayers(limit = 100) {
+    const charRepo = _api_1.RAGERP.database.getRepository(Character_entity_1.CharacterEntity);
+    if ((0, SeasonManager_1.isSeasonActive)()) {
+        const season = (0, SeasonManager_1.getActiveSeason)();
+        if (season) {
+            const repo = _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity);
+            const stats = await repo.find({
+                where: { seasonId: season.seasonId },
+                order: { seasonalMMR: "DESC" },
+                take: limit,
+                select: ["characterId", "seasonalMMR", "seasonalRankTier", "seasonalWins", "seasonalLosses", "seasonalKills", "seasonalDeaths"]
+            });
+            if (stats.length === 0)
+                return { entries: [], seasonName: season.name, useSeasonal: true };
+            const ids = stats.map((s) => s.characterId);
+            const chars = await charRepo.find({
+                where: { id: (0, typeorm_1.In)(ids) },
+                select: ["id", "name"]
+            });
+            const nameMap = new Map(chars.map((c) => [c.id, c.name]));
+            return {
+                entries: stats.map((s) => ({
+                    playerId: s.characterId,
+                    playerName: nameMap.get(s.characterId) ?? `Player #${s.characterId}`,
+                    mmr: s.seasonalMMR,
+                    rankTier: s.seasonalRankTier,
+                    wins: s.seasonalWins,
+                    losses: s.seasonalLosses,
+                    kills: s.seasonalKills,
+                    deaths: s.seasonalDeaths
+                })),
+                seasonName: season.name,
+                useSeasonal: true
+            };
+        }
+    }
+    const repo = _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity);
+    const stats = await repo.find({
+        order: { mmr: "DESC" },
+        take: limit,
+        select: ["playerId", "mmr", "rankTier", "wins", "losses", "kills", "deaths"]
+    });
+    if (stats.length === 0)
+        return { entries: [] };
+    const ids = stats.map((s) => s.playerId);
+    const chars = await charRepo.find({
+        where: { id: (0, typeorm_1.In)(ids) },
+        select: ["id", "name"]
+    });
+    const nameMap = new Map(chars.map((c) => [c.id, c.name]));
+    return {
+        entries: stats.map((s) => ({
+            playerId: s.playerId,
+            playerName: nameMap.get(s.playerId) ?? `Player #${s.playerId}`,
+            mmr: s.mmr,
+            rankTier: s.rankTier,
+            wins: s.wins,
+            losses: s.losses,
+            kills: s.kills,
+            deaths: s.deaths
+        }))
+    };
+}
+async function getPlayerRank(playerId) {
+    const charRepo = _api_1.RAGERP.database.getRepository(Character_entity_1.CharacterEntity);
+    if ((0, SeasonManager_1.isSeasonActive)()) {
+        const season = (0, SeasonManager_1.getActiveSeason)();
+        if (season) {
+            const repo = _api_1.RAGERP.database.getRepository(PlayerSeasonStats_entity_1.PlayerSeasonStatsEntity);
+            const allOrdered = await repo.find({
+                where: { seasonId: season.seasonId },
+                order: { seasonalMMR: "DESC" },
+                select: ["characterId", "seasonalMMR", "seasonalRankTier", "seasonalWins", "seasonalLosses", "seasonalKills", "seasonalDeaths"]
+            });
+            const rank = allOrdered.findIndex((s) => s.characterId === playerId);
+            if (rank < 0)
+                return null;
+            const char = await charRepo.findOne({ where: { id: playerId }, select: ["id", "name"] });
+            const s = allOrdered[rank];
+            const entry = {
+                playerId,
+                playerName: char?.name ?? `Player #${playerId}`,
+                mmr: s.seasonalMMR,
+                rankTier: s.seasonalRankTier,
+                wins: s.seasonalWins,
+                losses: s.seasonalLosses,
+                kills: s.seasonalKills,
+                deaths: s.seasonalDeaths
+            };
+            return { rank: rank + 1, entry, seasonName: season.name, useSeasonal: true };
+        }
+    }
+    const repo = _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity);
+    const allOrdered = await repo.find({
+        order: { mmr: "DESC" },
+        select: ["playerId", "mmr", "rankTier", "wins", "losses", "kills", "deaths"]
+    });
+    const rank = allOrdered.findIndex((s) => s.playerId === playerId);
+    if (rank < 0)
+        return null;
+    const char = await charRepo.findOne({ where: { id: playerId }, select: ["id", "name"] });
+    const s = allOrdered[rank];
+    const entry = {
+        playerId,
+        playerName: char?.name ?? `Player #${playerId}`,
+        mmr: s.mmr,
+        rankTier: s.rankTier,
+        wins: s.wins,
+        losses: s.losses,
+        kills: s.kills,
+        deaths: s.deaths
+    };
+    return { rank: rank + 1, entry };
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/MatchHistoryManager.ts"
+/*!************************************************************!*\
+  !*** ./source/server/modules/stats/MatchHistoryManager.ts ***!
+  \************************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.recordPlayerMatchHistory = recordPlayerMatchHistory;
+exports.getRecentMatchesByCharacterId = getRecentMatchesByCharacterId;
+exports.getRecentMatchesByPlayerId = getRecentMatchesByPlayerId;
+/**
+ * Match history for Hopouts. Records recent match summaries at centralized match end.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerMatchHistory_entity_1 = __webpack_require__(/*! ./PlayerMatchHistory.entity */ "./source/server/modules/stats/PlayerMatchHistory.entity.ts");
+async function recordPlayerMatchHistory(input) {
+    const kd = input.deaths > 0 ? input.kills / input.deaths : input.kills;
+    const repo = _api_1.RAGERP.database.getRepository(PlayerMatchHistory_entity_1.PlayerMatchHistoryEntity);
+    const row = repo.create({
+        characterId: input.characterId,
+        matchId: input.matchId,
+        result: input.result,
+        team: input.team,
+        kills: input.kills,
+        deaths: input.deaths,
+        kd,
+        mmrChange: input.mmrChange,
+        xpGained: input.xpGained,
+        levelAfter: input.levelAfter,
+        rankTierAfter: input.rankTierAfter
+    });
+    await repo.save(row);
+}
+async function getRecentMatchesByCharacterId(characterId, limit = 10) {
+    const repo = _api_1.RAGERP.database.getRepository(PlayerMatchHistory_entity_1.PlayerMatchHistoryEntity);
+    const rows = await repo.find({
+        where: { characterId },
+        order: { createdAt: "DESC" },
+        take: limit
+    });
+    return rows.map((r) => ({
+        id: r.id,
+        result: r.result,
+        team: r.team,
+        kills: r.kills,
+        deaths: r.deaths,
+        kd: r.kd,
+        mmrChange: r.mmrChange,
+        xpGained: r.xpGained,
+        levelAfter: r.levelAfter,
+        rankTierAfter: r.rankTierAfter,
+        createdAt: r.createdAt
+    }));
+}
+/** Alias for profile flow; playerId = characterId in Hopouts. */
+async function getRecentMatchesByPlayerId(playerId, limit = 10) {
+    return getRecentMatchesByCharacterId(playerId, limit);
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/PlayerChallengeProgress.entity.ts"
+/*!***********************************************************************!*\
+  !*** ./source/server/modules/stats/PlayerChallengeProgress.entity.ts ***!
+  \***********************************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PlayerChallengeProgressEntity = void 0;
+const typeorm_1 = __webpack_require__(/*! typeorm */ "typeorm");
+/**
+ * Persistent challenge progress for Hopouts daily/weekly challenges.
+ */
+let PlayerChallengeProgressEntity = class PlayerChallengeProgressEntity {
+    id;
+    characterId;
+    challengeKey;
+    challengeType;
+    progress = 0;
+    target;
+    completed = false;
+    claimed = false;
+    resetAt;
+    createdAt;
+    updatedAt;
+};
+exports.PlayerChallengeProgressEntity = PlayerChallengeProgressEntity;
+__decorate([
+    (0, typeorm_1.PrimaryGeneratedColumn)(),
+    __metadata("design:type", Number)
+], PlayerChallengeProgressEntity.prototype, "id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int" }),
+    __metadata("design:type", Number)
+], PlayerChallengeProgressEntity.prototype, "characterId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 64 }),
+    __metadata("design:type", String)
+], PlayerChallengeProgressEntity.prototype, "challengeKey", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 16 }),
+    __metadata("design:type", String)
+], PlayerChallengeProgressEntity.prototype, "challengeType", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerChallengeProgressEntity.prototype, "progress", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int" }),
+    __metadata("design:type", Number)
+], PlayerChallengeProgressEntity.prototype, "target", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "boolean", default: false }),
+    __metadata("design:type", Boolean)
+], PlayerChallengeProgressEntity.prototype, "completed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "boolean", default: false }),
+    __metadata("design:type", Boolean)
+], PlayerChallengeProgressEntity.prototype, "claimed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "bigint", transformer: { from: (v) => Number(v), to: (v) => v } }),
+    __metadata("design:type", Number)
+], PlayerChallengeProgressEntity.prototype, "resetAt", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerChallengeProgressEntity.prototype, "createdAt", void 0);
+__decorate([
+    (0, typeorm_1.UpdateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerChallengeProgressEntity.prototype, "updatedAt", void 0);
+exports.PlayerChallengeProgressEntity = PlayerChallengeProgressEntity = __decorate([
+    (0, typeorm_1.Entity)({ name: "player_challenge_progress" })
+], PlayerChallengeProgressEntity);
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/PlayerMatchHistory.entity.ts"
+/*!******************************************************************!*\
+  !*** ./source/server/modules/stats/PlayerMatchHistory.entity.ts ***!
+  \******************************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PlayerMatchHistoryEntity = void 0;
+const typeorm_1 = __webpack_require__(/*! typeorm */ "typeorm");
+/**
+ * Lightweight recent match history for Hopouts. Summary data only, no combat replay.
+ */
+let PlayerMatchHistoryEntity = class PlayerMatchHistoryEntity {
+    id;
+    /** Character ID (same as playerId in PlayerStats). */
+    characterId;
+    /** Match reference (dimension at match end, or generated id). */
+    matchId;
+    result;
+    team;
+    kills = 0;
+    deaths = 0;
+    kd = 0;
+    mmrChange = 0;
+    xpGained = 0;
+    levelAfter = 1;
+    rankTierAfter = "Unranked";
+    createdAt;
+};
+exports.PlayerMatchHistoryEntity = PlayerMatchHistoryEntity;
+__decorate([
+    (0, typeorm_1.PrimaryGeneratedColumn)(),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int" }),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "characterId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 64 }),
+    __metadata("design:type", String)
+], PlayerMatchHistoryEntity.prototype, "matchId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 8 }),
+    __metadata("design:type", String)
+], PlayerMatchHistoryEntity.prototype, "result", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 8 }),
+    __metadata("design:type", String)
+], PlayerMatchHistoryEntity.prototype, "team", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "kills", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "deaths", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "float", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "kd", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "mmrChange", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "xpGained", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 1 }),
+    __metadata("design:type", Number)
+], PlayerMatchHistoryEntity.prototype, "levelAfter", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 32, default: "Unranked" }),
+    __metadata("design:type", String)
+], PlayerMatchHistoryEntity.prototype, "rankTierAfter", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerMatchHistoryEntity.prototype, "createdAt", void 0);
+exports.PlayerMatchHistoryEntity = PlayerMatchHistoryEntity = __decorate([
+    (0, typeorm_1.Entity)({ name: "player_match_history" })
+], PlayerMatchHistoryEntity);
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/PlayerStats.entity.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modules/stats/PlayerStats.entity.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PlayerStatsEntity = void 0;
+const typeorm_1 = __webpack_require__(/*! typeorm */ "typeorm");
+/**
+ * Persistent player statistics. playerId is the character ID (persistent across sessions).
+ */
+let PlayerStatsEntity = class PlayerStatsEntity {
+    playerId;
+    kills = 0;
+    deaths = 0;
+    wins = 0;
+    losses = 0;
+    matchesPlayed = 0;
+    mmr = 1000;
+    rankTier = "Unranked";
+    placementMatchesPlayed = 0;
+    xp = 0;
+    level = 1;
+    prestige = 0;
+    createdAt;
+    updatedAt;
+};
+exports.PlayerStatsEntity = PlayerStatsEntity;
+__decorate([
+    (0, typeorm_1.PrimaryColumn)({ type: "int" }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "playerId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "kills", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "deaths", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "wins", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "losses", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "matchesPlayed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 1000 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "mmr", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "varchar", length: 32, default: "Unranked" }),
+    __metadata("design:type", String)
+], PlayerStatsEntity.prototype, "rankTier", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "placementMatchesPlayed", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "xp", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 1 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "level", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: "int", default: 0 }),
+    __metadata("design:type", Number)
+], PlayerStatsEntity.prototype, "prestige", void 0);
+__decorate([
+    (0, typeorm_1.CreateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerStatsEntity.prototype, "createdAt", void 0);
+__decorate([
+    (0, typeorm_1.UpdateDateColumn)(),
+    __metadata("design:type", Date)
+], PlayerStatsEntity.prototype, "updatedAt", void 0);
+exports.PlayerStatsEntity = PlayerStatsEntity = __decorate([
+    (0, typeorm_1.Entity)({ name: "player_stats" })
+], PlayerStatsEntity);
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/PrestigeManager.ts"
+/*!********************************************************!*\
+  !*** ./source/server/modules/stats/PrestigeManager.ts ***!
+  \********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.MAX_LEVEL = void 0;
+exports.canPrestige = canPrestige;
+exports.getPrestigeStatus = getPrestigeStatus;
+exports.prestigePlayer = prestigePlayer;
+/**
+ * Prestige system: long-term progression beyond max level.
+ * Manual prestige resets lifetime level/xp only; keeps kills, wins, MMR, seasonal data.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerStats_entity_1 = __webpack_require__(/*! ./PlayerStats.entity */ "./source/server/modules/stats/PlayerStats.entity.ts");
+const StatsManager_1 = __webpack_require__(/*! ./StatsManager */ "./source/server/modules/stats/StatsManager.ts");
+exports.MAX_LEVEL = 50;
+async function canPrestige(characterId) {
+    const stats = await (0, StatsManager_1.ensureStats)(characterId);
+    return stats.level >= exports.MAX_LEVEL;
+}
+async function getPrestigeStatus(characterId) {
+    const stats = await (0, StatsManager_1.ensureStats)(characterId);
+    return {
+        prestige: stats.prestige,
+        level: stats.level,
+        xp: stats.xp,
+        maxLevel: exports.MAX_LEVEL,
+        canPrestige: stats.level >= exports.MAX_LEVEL
+    };
+}
+async function prestigePlayer(characterId) {
+    const stats = await (0, StatsManager_1.ensureStats)(characterId);
+    if (stats.level < exports.MAX_LEVEL) {
+        return { success: false, error: "Must reach max level to prestige." };
+    }
+    stats.prestige += 1;
+    stats.level = 1;
+    stats.xp = 0;
+    await _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity).save(stats);
+    return { success: true, newPrestige: stats.prestige };
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/ProfileManager.ts"
+/*!*******************************************************!*\
+  !*** ./source/server/modules/stats/ProfileManager.ts ***!
+  \*******************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getPlayerProfile = getPlayerProfile;
+exports.getPlayerProfileByCharacterId = getPlayerProfileByCharacterId;
+/**
+ * Player profile / stats for Hopouts. Uses existing PlayerStats.
+ * Includes seasonal stats when a season is active.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerStats_entity_1 = __webpack_require__(/*! ./PlayerStats.entity */ "./source/server/modules/stats/PlayerStats.entity.ts");
+const Character_entity_1 = __webpack_require__(/*! @entities/Character.entity */ "./source/server/database/entity/Character.entity.ts");
+const LeaderboardManager_1 = __webpack_require__(/*! ./LeaderboardManager */ "./source/server/modules/stats/LeaderboardManager.ts");
+const ProgressionManager_1 = __webpack_require__(/*! ./ProgressionManager */ "./source/server/modules/stats/ProgressionManager.ts");
+const SeasonManager_1 = __webpack_require__(/*! ../seasons/SeasonManager */ "./source/server/modules/seasons/SeasonManager.ts");
+const PrestigeManager_1 = __webpack_require__(/*! ./PrestigeManager */ "./source/server/modules/stats/PrestigeManager.ts");
+/** playerId in PlayerStats = character ID */
+async function getPlayerProfile(characterId) {
+    return getPlayerProfileByCharacterId(characterId);
+}
+async function getPlayerProfileByCharacterId(characterId) {
+    const statsRepo = _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity);
+    const charRepo = _api_1.RAGERP.database.getRepository(Character_entity_1.CharacterEntity);
+    const stats = await statsRepo.findOne({ where: { playerId: characterId } });
+    if (!stats)
+        return null;
+    const char = await charRepo.findOne({ where: { id: characterId }, select: ["id", "name"] });
+    const playerName = char?.name ?? `Player #${characterId}`;
+    const kd = stats.kills / Math.max(1, stats.deaths);
+    const winRate = stats.wins / Math.max(1, stats.matchesPlayed);
+    const xpForNextLevel = (0, ProgressionManager_1.getRequiredXpForLevel)(stats.level);
+    const currentLevelProgress = stats.xp;
+    let leaderboardRank;
+    try {
+        const rankResult = await (0, LeaderboardManager_1.getPlayerRank)(characterId);
+        if (rankResult)
+            leaderboardRank = rankResult.rank;
+    }
+    catch {
+        /* optional */
+    }
+    const prestigeStatus = await (0, PrestigeManager_1.getPrestigeStatus)(characterId);
+    const profile = {
+        playerId: characterId,
+        playerName,
+        mmr: stats.mmr,
+        rankTier: stats.rankTier,
+        placementMatchesPlayed: stats.placementMatchesPlayed,
+        matchesPlayed: stats.matchesPlayed,
+        wins: stats.wins,
+        losses: stats.losses,
+        kills: stats.kills,
+        deaths: stats.deaths,
+        kd,
+        winRate,
+        leaderboardRank,
+        xp: stats.xp,
+        level: stats.level,
+        currentLevelProgress,
+        xpForNextLevel,
+        prestige: prestigeStatus.prestige,
+        maxLevel: PrestigeManager_1.MAX_LEVEL,
+        canPrestige: prestigeStatus.canPrestige
+    };
+    if ((0, SeasonManager_1.isSeasonActive)()) {
+        const season = (0, SeasonManager_1.getActiveSeason)();
+        if (season) {
+            try {
+                const seasonStats = await (0, SeasonManager_1.ensureSeasonStats)(season.seasonId, characterId);
+                profile.seasonName = season.name;
+                profile.seasonalMmr = seasonStats.seasonalMMR;
+                profile.seasonalRankTier = seasonStats.seasonalRankTier;
+                profile.seasonalWins = seasonStats.seasonalWins;
+                profile.seasonalLosses = seasonStats.seasonalLosses;
+                profile.seasonalKills = seasonStats.seasonalKills;
+                profile.seasonalDeaths = seasonStats.seasonalDeaths;
+                profile.seasonalXp = seasonStats.seasonalXp;
+                profile.seasonalLevel = seasonStats.seasonalLevel;
+                profile.seasonalPlacementMatchesPlayed = seasonStats.seasonalPlacementMatchesPlayed;
+                profile.xpForNextLevel = (0, ProgressionManager_1.getRequiredXpForLevel)(seasonStats.seasonalLevel);
+            }
+            catch {
+                /* optional */
+            }
+        }
+    }
+    return profile;
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/ProgressionManager.ts"
+/*!***********************************************************!*\
+  !*** ./source/server/modules/stats/ProgressionManager.ts ***!
+  \***********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getRequiredXpForLevel = getRequiredXpForLevel;
+exports.getMatchXpResult = getMatchXpResult;
+exports.clearMatchXpResults = clearMatchXpResults;
+exports.addXp = addXp;
+exports.applyMatchXpResult = applyMatchXpResult;
+exports.applyKillXp = applyKillXp;
+exports.applyClutchXp = applyClutchXp;
+/**
+ * XP and level progression for Hopouts. Separate from ranked MMR.
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerStats_entity_1 = __webpack_require__(/*! ./PlayerStats.entity */ "./source/server/modules/stats/PlayerStats.entity.ts");
+const StatsManager_1 = __webpack_require__(/*! ./StatsManager */ "./source/server/modules/stats/StatsManager.ts");
+const PrestigeManager_1 = __webpack_require__(/*! ./PrestigeManager */ "./source/server/modules/stats/PrestigeManager.ts");
+const XP_WIN = 150;
+const XP_LOSS = 80;
+const XP_KILL = 10;
+const XP_HEADSHOT = 5;
+const XP_CLUTCH = 25;
+/** Per-player XP result during a match. Keyed by dimension -> characterId. */
+const matchXpResults = new Map();
+function getRequiredXpForLevel(level) {
+    return 500 + (level - 1) * 150;
+}
+function getMatchXpResult(dimension, characterId) {
+    return matchXpResults.get(dimension)?.get(characterId);
+}
+function clearMatchXpResults(dimension) {
+    matchXpResults.delete(dimension);
+}
+function accumulateMatchXp(dimension, characterId, result) {
+    let dimMap = matchXpResults.get(dimension);
+    if (!dimMap) {
+        dimMap = new Map();
+        matchXpResults.set(dimension, dimMap);
+    }
+    const existing = dimMap.get(characterId);
+    if (existing) {
+        existing.totalXp += result.xpGained;
+        existing.leveledUp = existing.leveledUp || result.leveledUp;
+        existing.newLevel = result.newLevel;
+    }
+    else {
+        dimMap.set(characterId, {
+            totalXp: result.xpGained,
+            leveledUp: result.leveledUp,
+            newLevel: result.newLevel
+        });
+    }
+}
+async function addXp(playerId, amount, matchDimension) {
+    const stats = await (0, StatsManager_1.ensureStats)(playerId);
+    const repo = _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity);
+    const oldLevel = stats.level;
+    let xp = stats.xp + amount;
+    let level = stats.level;
+    while (level < PrestigeManager_1.MAX_LEVEL) {
+        const required = getRequiredXpForLevel(level);
+        if (xp < required)
+            break;
+        xp -= required;
+        level++;
+    }
+    stats.xp = xp;
+    stats.level = level;
+    await repo.save(stats);
+    const result = {
+        xpGained: amount,
+        newXp: xp,
+        newLevel: level,
+        leveledUp: level > oldLevel
+    };
+    if (matchDimension != null) {
+        accumulateMatchXp(matchDimension, playerId, result);
+    }
+    return result;
+}
+async function applyMatchXpResult(input, matchDimension) {
+    const amount = input.isWin ? XP_WIN : input.isLoss ? XP_LOSS : 0;
+    if (amount <= 0)
+        return { xpGained: 0, newXp: 0, newLevel: 0, leveledUp: false };
+    return addXp(input.characterId, amount, matchDimension);
+}
+async function applyKillXp(characterId, headshot, matchDimension) {
+    const amount = XP_KILL + (headshot ? XP_HEADSHOT : 0);
+    return addXp(characterId, amount, matchDimension);
+}
+async function applyClutchXp(characterId, matchDimension) {
+    return addXp(characterId, XP_CLUTCH, matchDimension);
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/StatsEvents.ts"
+/*!****************************************************!*\
+  !*** ./source/server/modules/stats/StatsEvents.ts ***!
+  \****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.onMatchDeath = onMatchDeath;
+exports.onMatchEnd = onMatchEnd;
+/**
+ * Stats event hooks. Call these from match modes when combat/match events occur.
+ * Extracts character ID from players and delegates to StatsManager.
+ */
+const StatsManager_1 = __webpack_require__(/*! ./StatsManager */ "./source/server/modules/stats/StatsManager.ts");
+const ProgressionManager_1 = __webpack_require__(/*! ./ProgressionManager */ "./source/server/modules/stats/ProgressionManager.ts");
+const ChallengeManager_1 = __webpack_require__(/*! ./ChallengeManager */ "./source/server/modules/stats/ChallengeManager.ts");
+const SeasonManager_1 = __webpack_require__(/*! ../seasons/SeasonManager */ "./source/server/modules/seasons/SeasonManager.ts");
+function getCharacterId(player) {
+    return player?.character?.id ?? null;
+}
+/**
+ * Call when a player dies in a match. Records death for victim, kill for killer (if any).
+ * headshot: true if the killing blow was a headshot (for XP bonus).
+ * matchDimension: optional, for XP tracking in match result.
+ */
+function onMatchDeath(victim, killer, headshot, matchDimension) {
+    const victimId = getCharacterId(victim);
+    if (victimId !== null) {
+        (0, StatsManager_1.recordDeath)(victimId).catch((err) => console.error("[Stats] recordDeath failed:", err));
+        if ((0, SeasonManager_1.isSeasonActive)()) {
+            const season = (0, SeasonManager_1.getActiveSeason)();
+            if (season)
+                (0, SeasonManager_1.recordSeasonalDeath)(season.seasonId, victimId).catch((err) => console.error("[Stats] recordSeasonalDeath failed:", err));
+        }
+    }
+    if (killer) {
+        const killerId = getCharacterId(killer);
+        if (killerId !== null) {
+            (0, StatsManager_1.recordKill)(killerId).catch((err) => console.error("[Stats] recordKill failed:", err));
+            (0, ProgressionManager_1.applyKillXp)(killerId, !!headshot, matchDimension).catch((err) => console.error("[Stats] applyKillXp failed:", err));
+            if ((0, SeasonManager_1.isSeasonActive)()) {
+                const season = (0, SeasonManager_1.getActiveSeason)();
+                if (season) {
+                    (0, SeasonManager_1.recordSeasonalKill)(season.seasonId, killerId).catch((err) => console.error("[Stats] recordSeasonalKill failed:", err));
+                    const xpAmount = 10 + (headshot ? 5 : 0);
+                    (0, SeasonManager_1.addSeasonalXp)(season.seasonId, killerId, xpAmount).catch((err) => console.error("[Stats] addSeasonalXp failed:", err));
+                }
+            }
+        }
+    }
+}
+/**
+ * Call when a match ends. Records win/loss/draw for all players.
+ * Pass player objects; character IDs are extracted (players without character are skipped).
+ * matchDimension: optional, for XP tracking in match result.
+ * Returns Promise that resolves when all records (including XP) are done.
+ */
+async function onMatchEnd(winner, redTeamPlayers, blueTeamPlayers, matchDimension) {
+    const getCharacterIds = (players) => players.map((p) => getCharacterId(p)).filter((id) => id !== null);
+    const record = async (characterId, isWin, isLoss) => {
+        try {
+            if (isWin)
+                await (0, StatsManager_1.recordMatchWin)(characterId);
+            else if (isLoss)
+                await (0, StatsManager_1.recordMatchLoss)(characterId);
+            else
+                await (0, StatsManager_1.recordMatchPlayed)(characterId);
+            await (0, ProgressionManager_1.applyMatchXpResult)({ characterId, isWin, isLoss }, matchDimension);
+            if ((0, SeasonManager_1.isSeasonActive)()) {
+                const season = (0, SeasonManager_1.getActiveSeason)();
+                if (season) {
+                    await (0, SeasonManager_1.applySeasonalMatchXp)(season.seasonId, characterId, isWin, isLoss);
+                }
+            }
+            await (0, ChallengeManager_1.incrementChallengeProgress)(characterId, "play_matches", 1);
+            if (isWin)
+                await (0, ChallengeManager_1.incrementChallengeProgress)(characterId, "win_matches", 1);
+        }
+        catch (err) {
+            console.error("[Stats] recordMatchEnd failed:", err);
+        }
+    };
+    const winningIds = winner === "red" ? getCharacterIds(redTeamPlayers) : winner === "blue" ? getCharacterIds(blueTeamPlayers) : [];
+    const losingIds = winner === "red" ? getCharacterIds(blueTeamPlayers) : winner === "blue" ? getCharacterIds(redTeamPlayers) : [];
+    const drawIds = winner === "draw" ? getCharacterIds([...redTeamPlayers, ...blueTeamPlayers]) : [];
+    await Promise.all([
+        ...winningIds.map((id) => record(id, true, false)),
+        ...losingIds.map((id) => record(id, false, true)),
+        ...drawIds.map((id) => record(id, false, false))
+    ]);
+}
+
+
+/***/ },
+
+/***/ "./source/server/modules/stats/StatsManager.ts"
+/*!*****************************************************!*\
+  !*** ./source/server/modules/stats/StatsManager.ts ***!
+  \*****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getRankTierFromMmr = getRankTierFromMmr;
+exports.updateRankedMatchResult = updateRankedMatchResult;
+exports.getStats = getStats;
+exports.createStats = createStats;
+exports.ensureStats = ensureStats;
+exports.recordKill = recordKill;
+exports.recordDeath = recordDeath;
+exports.recordMatchWin = recordMatchWin;
+exports.recordMatchLoss = recordMatchLoss;
+exports.recordMatchPlayed = recordMatchPlayed;
+/**
+ * Generic player statistics manager. Persists stats via TypeORM.
+ * playerId = character ID (persistent across sessions).
+ */
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PlayerStats_entity_1 = __webpack_require__(/*! ./PlayerStats.entity */ "./source/server/modules/stats/PlayerStats.entity.ts");
+const PLACEMENT_MATCHES = 5;
+const MMR_WIN = 25;
+const MMR_LOSS = -20;
+const MMR_MODIFIER_MIN = -5;
+const MMR_MODIFIER_MAX = 5;
+/** Rank tier thresholds (MMR). Unranked = during placements. */
+const RANK_TIERS = [
+    { tier: "Bronze", minMmr: 0 },
+    { tier: "Silver", minMmr: 1000 },
+    { tier: "Gold", minMmr: 1200 },
+    { tier: "Platinum", minMmr: 1400 },
+    { tier: "Diamond", minMmr: 1600 },
+    { tier: "Elite", minMmr: 1800 }
+];
+function getRankTierFromMmr(mmr, placementMatchesPlayed) {
+    if (placementMatchesPlayed < PLACEMENT_MATCHES)
+        return "Unranked";
+    let tier = "Bronze";
+    for (const t of RANK_TIERS) {
+        if (mmr >= t.minMmr)
+            tier = t.tier;
+    }
+    return tier;
+}
+async function updateRankedMatchResult(inputs) {
+    const results = new Map();
+    const repo = _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity);
+    for (const input of inputs) {
+        const stats = await ensureStats(input.characterId);
+        const oldMMR = stats.mmr;
+        const placementBefore = stats.placementMatchesPlayed;
+        const kdDiff = input.kills - input.deaths;
+        const modifier = Math.max(MMR_MODIFIER_MIN, Math.min(MMR_MODIFIER_MAX, kdDiff));
+        let delta;
+        if (input.isWin)
+            delta = MMR_WIN + modifier;
+        else if (input.isLoss)
+            delta = MMR_LOSS + modifier;
+        else
+            delta = 0;
+        const newMMR = Math.max(0, oldMMR + delta);
+        stats.mmr = newMMR;
+        stats.placementMatchesPlayed = Math.min(PLACEMENT_MATCHES, placementBefore + 1);
+        stats.rankTier = getRankTierFromMmr(newMMR, stats.placementMatchesPlayed);
+        await repo.save(stats);
+        results.set(input.characterId, { oldMMR, newMMR, rankTier: stats.rankTier });
+    }
+    return results;
+}
+async function getStats(playerId) {
+    const repo = _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity);
+    return repo.findOne({ where: { playerId } });
+}
+async function createStats(playerId) {
+    const repo = _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity);
+    const stats = repo.create({
+        playerId,
+        kills: 0,
+        deaths: 0,
+        wins: 0,
+        losses: 0,
+        matchesPlayed: 0,
+        xp: 0,
+        level: 1,
+        prestige: 0
+    });
+    return repo.save(stats);
+}
+async function ensureStats(playerId) {
+    const existing = await getStats(playerId);
+    return existing ?? createStats(playerId);
+}
+async function recordKill(playerId) {
+    const stats = await ensureStats(playerId);
+    stats.kills++;
+    await _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity).save(stats);
+}
+async function recordDeath(playerId) {
+    const stats = await ensureStats(playerId);
+    stats.deaths++;
+    await _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity).save(stats);
+}
+async function recordMatchWin(playerId) {
+    const stats = await ensureStats(playerId);
+    stats.wins++;
+    stats.matchesPlayed++;
+    await _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity).save(stats);
+}
+async function recordMatchLoss(playerId) {
+    const stats = await ensureStats(playerId);
+    stats.losses++;
+    stats.matchesPlayed++;
+    await _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity).save(stats);
+}
+async function recordMatchPlayed(playerId) {
+    const stats = await ensureStats(playerId);
+    stats.matchesPlayed++;
+    await _api_1.RAGERP.database.getRepository(PlayerStats_entity_1.PlayerStatsEntity).save(stats);
+}
 
 
 /***/ },
@@ -7031,6 +11279,12 @@ _api_1.RAGERP.cef.register("admin", "executeCommand", (player, data) => {
 _api_1.RAGERP.cef.register("admin", "close", (player) => {
     _api_1.RAGERP.cef.emit(player, "system", "setPage", "hud");
 });
+_api_1.RAGERP.cef.register("admin", "open", (player) => {
+    if (!player?.account || (player.account.adminlevel ?? 0) <= 0)
+        return;
+    _api_1.RAGERP.cef.startPage(player, "admin");
+    _api_1.RAGERP.cef.emit(player, "system", "setPage", "admin");
+});
 
 
 /***/ },
@@ -7046,15 +11300,24 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
 const Arena_module_1 = __webpack_require__(/*! @arena/Arena.module */ "./source/server/arena/Arena.module.ts");
 const ArenaMatch_manager_1 = __webpack_require__(/*! @arena/ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
+const Player_event_1 = __webpack_require__(/*! @events/Player.event */ "./source/server/serverevents/Player.event.ts");
 const ArenaConfig_1 = __webpack_require__(/*! @arena/ArenaConfig */ "./source/server/arena/ArenaConfig.ts");
 _api_1.RAGERP.cef.register("arena", "joinQueue", async (player, data) => {
     let size = 1;
+    let asParty = false;
+    let preferredMapId;
     try {
         const parsed = typeof data === "string" ? JSON.parse(data) : data;
-        if (parsed && typeof parsed === "object" && parsed.size !== undefined) {
-            const s = Number(parsed.size);
-            if (ArenaConfig_1.QUEUE_SIZES.includes(s))
-                size = s;
+        if (parsed && typeof parsed === "object") {
+            if (parsed.size !== undefined) {
+                const s = Number(parsed.size);
+                if (ArenaConfig_1.QUEUE_SIZES.includes(s))
+                    size = s;
+            }
+            if (parsed.asParty === true)
+                asParty = true;
+            if (typeof parsed.preferredMapId === "string")
+                preferredMapId = parsed.preferredMapId;
         }
         else if (typeof parsed === "number") {
             if (ArenaConfig_1.QUEUE_SIZES.includes(parsed))
@@ -7064,7 +11327,8 @@ _api_1.RAGERP.cef.register("arena", "joinQueue", async (player, data) => {
     catch {
         /* use default */
     }
-    if ((0, Arena_module_1.joinQueue)(player, size)) {
+    const ok = asParty ? (0, Arena_module_1.joinQueueWithParty)(player, size, preferredMapId) : (0, Arena_module_1.joinQueue)(player, size, preferredMapId);
+    if (ok) {
         _api_1.RAGERP.cef.emit(player, "system", "setPage", "arena_lobby");
     }
 });
@@ -7077,6 +11341,12 @@ _api_1.RAGERP.cef.register("arena", "leaveMatch", async (player) => {
     if ((0, ArenaMatch_manager_1.leaveMatch)(player)) {
         player.showNotify("success" /* RageShared.Enums.NotifyType.TYPE_SUCCESS */, "Left arena match.");
     }
+});
+_api_1.RAGERP.cef.register("match", "acceptReady", async (player) => {
+    (0, Arena_module_1.acceptReadyCheck)(player);
+});
+_api_1.RAGERP.cef.register("match", "declineReady", async (player) => {
+    (0, Arena_module_1.declineReadyCheck)(player);
 });
 _api_1.RAGERP.cef.register("arena", "vote", async (player, data) => {
     try {
@@ -7150,6 +11420,18 @@ mp.events.add("server::arena:useItem", (player, dataStr) => {
         _api_1.RAGERP.cef.emit(player, "arena", "itemCastComplete", { item });
     }, cfg.castTime);
 });
+mp.events.add("server::arena:spectate:switch", (player, targetId) => {
+    if (!player || !mp.players.exists(player) || !player.getVariable("isSpectating"))
+        return;
+    const teammates = (0, ArenaMatch_manager_1.getSpectatableTeammates)(player.id);
+    const target = teammates.find((t) => t.playerId === targetId);
+    if (!target)
+        return;
+    const targetMp = mp.players.at(target.playerId);
+    if (!targetMp || !mp.players.exists(targetMp))
+        return;
+    (0, Player_event_1.startSpectate)(player, targetMp);
+});
 
 
 /***/ },
@@ -7200,6 +11482,7 @@ _api_1.RAGERP.cef.register("auth", "register", async (player, data) => {
     player.call("client::auth:destroyCamera");
     player.call("client::creator:start");
     _api_1.RAGERP.cef.emit(player, "system", "setPage", "creator");
+    _api_1.RAGERP.cef.emit(player, "creator", "setUsername", { username: player.account.username });
 });
 _api_1.RAGERP.cef.register("auth", "loginPlayer", async (player, data) => {
     const { username, password } = _api_1.RAGERP.utils.parseObject(data);
@@ -7216,15 +11499,85 @@ _api_1.RAGERP.cef.register("auth", "loginPlayer", async (player, data) => {
         take: 1
     });
     if (characters.length > 0) {
-        await (0, Character_event_1.spawnWithCharacter)(player, characters[0]);
-        _api_1.RAGERP.cef.startPage(player, "mainmenu");
-        _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
-        _api_1.RAGERP.cef.emit(player, "mainmenu", "setPlayerData", { name: characters[0].name });
+        const reconnected = await (0, Character_event_1.spawnWithCharacter)(player, characters[0]);
+        if (!reconnected) {
+            _api_1.RAGERP.cef.startPage(player, "mainmenu");
+            _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+            _api_1.RAGERP.cef.emit(player, "mainmenu", "setPlayerData", { name: characters[0].name });
+        }
     }
     else {
         player.call("client::auth:destroyCamera");
         player.call("client::creator:start");
         _api_1.RAGERP.cef.emit(player, "system", "setPage", "creator");
+        _api_1.RAGERP.cef.emit(player, "creator", "setUsername", { username: player.account.username });
+    }
+});
+
+
+/***/ },
+
+/***/ "./source/server/serverevents/Challenge.event.ts"
+/*!*******************************************************!*\
+  !*** ./source/server/serverevents/Challenge.event.ts ***!
+  \*******************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const ChallengeManager_1 = __webpack_require__(/*! @modules/stats/ChallengeManager */ "./source/server/modules/stats/ChallengeManager.ts");
+_api_1.RAGERP.cef.register("challenges", "getMyChallenges", async (player) => {
+    const characterId = player.character?.id;
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "challenges", "setMyChallenges", { challenges: [] });
+        return;
+    }
+    try {
+        const challenges = await (0, ChallengeManager_1.getChallengesForCharacter)(characterId);
+        _api_1.RAGERP.cef.emit(player, "challenges", "setMyChallenges", { challenges });
+    }
+    catch (err) {
+        console.error("[Challenges] getMyChallenges failed:", err);
+        _api_1.RAGERP.cef.emit(player, "challenges", "setMyChallenges", { challenges: [] });
+    }
+});
+_api_1.RAGERP.cef.register("challenges", "claimReward", async (player, data) => {
+    const characterId = player.character?.id;
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "challenges", "claimRewardResult", { ok: false, challengeKey: null });
+        return;
+    }
+    let challengeKey;
+    try {
+        const parsed = data ? (typeof data === "string" ? JSON.parse(data) : data) : null;
+        if (parsed && typeof parsed === "object" && typeof parsed.challengeKey === "string") {
+            challengeKey = parsed.challengeKey;
+        }
+    }
+    catch {
+        /* invalid */
+    }
+    if (!challengeKey) {
+        _api_1.RAGERP.cef.emit(player, "challenges", "claimRewardResult", { ok: false, challengeKey: null });
+        return;
+    }
+    try {
+        const result = await (0, ChallengeManager_1.claimChallengeReward)(characterId, challengeKey);
+        _api_1.RAGERP.cef.emit(player, "challenges", "claimRewardResult", {
+            ok: result.ok,
+            challengeKey,
+            xpAwarded: result.xpAwarded
+        });
+        if (result.ok) {
+            const challenges = await (0, ChallengeManager_1.getChallengesForCharacter)(characterId);
+            _api_1.RAGERP.cef.emit(player, "challenges", "setMyChallenges", { challenges });
+        }
+    }
+    catch (err) {
+        console.error("[Challenges] claimReward failed:", err);
+        _api_1.RAGERP.cef.emit(player, "challenges", "claimRewardResult", { ok: false, challengeKey });
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Failed to claim challenge.");
     }
 });
 
@@ -7242,6 +11595,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.spawnWithCharacter = spawnWithCharacter;
 const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
 const Character_entity_1 = __webpack_require__(/*! @entities/Character.entity */ "./source/server/database/entity/Character.entity.ts");
+const ReconnectManager_1 = __webpack_require__(/*! @modules/matches/ReconnectManager */ "./source/server/modules/matches/ReconnectManager.ts");
+const ArenaMatch_manager_1 = __webpack_require__(/*! @arena/ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
+/** Returns true if player was reconnected to a match (caller should skip mainmenu flow). */
 async function spawnWithCharacter(player, character) {
     player.character = character;
     player.setVariable("loggedin", true);
@@ -7250,7 +11606,14 @@ async function spawnWithCharacter(player, character) {
     player.model = character.gender === 0 ? mp.joaat("mp_m_freemode_01") : mp.joaat("mp_f_freemode_01");
     player.name = character.name;
     await character.spawn(player);
+    const reconnectSlot = (0, ReconnectManager_1.tryReconnect)(player);
+    if (reconnectSlot) {
+        (0, ArenaMatch_manager_1.restoreReconnectingPlayer)(player, reconnectSlot);
+        player.showNotify("success" /* RageShared.Enums.NotifyType.TYPE_SUCCESS */, "Reconnected to match!");
+        return true;
+    }
     player.showNotify("success" /* RageShared.Enums.NotifyType.TYPE_SUCCESS */, `Welcome, ${character.name}!`);
+    return false;
 }
 /**
  * When a player changes navigation in character creator, example going from general data to appearance
@@ -7269,7 +11632,11 @@ _api_1.RAGERP.cef.register("character", "select", async (player, data) => {
     const character = await _api_1.RAGERP.database.getRepository(Character_entity_1.CharacterEntity).findOne({ where: { id }, relations: ["bank"] });
     if (!character)
         return player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "An error occurred selecting your character.");
-    await spawnWithCharacter(player, character);
+    const reconnected = await spawnWithCharacter(player, character);
+    if (!reconnected) {
+        _api_1.RAGERP.cef.startPage(player, "mainmenu");
+        _api_1.RAGERP.cef.emit(player, "system", "setPage", "mainmenu");
+    }
 });
 /**
  * Executes when a player choose to create a new character
@@ -7278,6 +11645,8 @@ _api_1.RAGERP.cef.register("character", "create", async (player) => {
     player.call("client::auth:destroyCamera");
     player.call("client::creator:start");
     _api_1.RAGERP.cef.emit(player, "system", "setPage", "creator");
+    if (player.account)
+        _api_1.RAGERP.cef.emit(player, "creator", "setUsername", { username: player.account.username });
 });
 /**
  * Executes when a player finishes creating a character.
@@ -7286,10 +11655,7 @@ _api_1.RAGERP.cef.register("creator", "create", async (player, data) => {
     if (!player.account)
         return player.kick("An error has occurred!");
     const parseData = _api_1.RAGERP.utils.parseObject(data);
-    const fullname = `${parseData.name.firstname} ${parseData.name.lastname}`;
-    const nameisTaken = await _api_1.RAGERP.database.getRepository(Character_entity_1.CharacterEntity).findOne({ where: { name: fullname } });
-    if (nameisTaken)
-        return player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "We're sorry but that name is already taken, choose another one.");
+    const fullname = player.account.username;
     const { sex, parents, hair, face, color, clothes: creatorClothes } = parseData;
     const characterLimit = await _api_1.RAGERP.database.getRepository(Character_entity_1.CharacterEntity).find({ where: { account: { id: player.account.id } }, take: 1 });
     if (characterLimit.length >= 1)
@@ -7469,8 +11835,30 @@ mp.events.add("server::chat:sendMessage", invokeMessage);
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const utils_module_1 = __webpack_require__(/*! @shared/utils.module */ "./source/shared/utils.module.ts");
+const SnapshotManager_1 = __webpack_require__(/*! @modules/combat/SnapshotManager */ "./source/server/modules/combat/SnapshotManager.ts");
+const CombatIntegrity_1 = __webpack_require__(/*! @modules/combat/CombatIntegrity */ "./source/server/modules/combat/CombatIntegrity.ts");
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
 const ArenaMatch_manager_1 = __webpack_require__(/*! @arena/ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
+const FfaMatch_manager_1 = __webpack_require__(/*! @modes/ffa/FfaMatch.manager */ "./source/server/modes/ffa/FfaMatch.manager.ts");
+const GunGameMatch_manager_1 = __webpack_require__(/*! @modes/gungame/GunGameMatch.manager */ "./source/server/modes/gungame/GunGameMatch.manager.ts");
 const AdminLog_manager_1 = __webpack_require__(/*! ../admin/AdminLog.manager */ "./source/server/admin/AdminLog.manager.ts");
+const DeathRecapTracker_1 = __webpack_require__(/*! @modules/combat/DeathRecapTracker */ "./source/server/modules/combat/DeathRecapTracker.ts");
+function getDamageDirection(victim, shooter) {
+    const dx = shooter.position.x - victim.position.x;
+    const dy = shooter.position.y - victim.position.y;
+    const angleToShooter = (Math.atan2(dx, dy) * 180) / Math.PI;
+    const victimHeading = victim.heading;
+    let relative = ((angleToShooter - victimHeading) % 360 + 360) % 360;
+    if (relative > 180)
+        relative -= 360;
+    if (relative >= -45 && relative <= 45)
+        return "front";
+    if (relative > 45 && relative < 135)
+        return "right";
+    if (relative >= 135 || relative <= -135)
+        return "behind";
+    return "left";
+}
 const DEFAULT_BONE_MULT = 1;
 const DEFAULT_WEAPON_BASE = 28;
 const DEFAULT_WEAPON_MIN = 10;
@@ -7554,30 +11942,59 @@ mp.events.add("server:PlayerHit", (shooter, victimId, targetBone, weaponHash) =>
         return;
     if (shooter.id === victim.id)
         return;
-    // Arena: no team damage
-    const match = (0, ArenaMatch_manager_1.getMatchByPlayer)(victim);
-    if (match) {
-        const victimTeam = (0, ArenaMatch_manager_1.getTeam)(match, victim.id);
-        const shooterTeam = (0, ArenaMatch_manager_1.getTeam)(match, shooter.id);
-        if (victimTeam && shooterTeam && victimTeam === shooterTeam)
-            return;
-        // Must be in same dimension
+    const timeSinceLastShot = (0, CombatIntegrity_1.getTimeSinceLastShot)(shooter.id);
+    // Combat integrity: fire rate validation
+    const fireRateResult = (0, CombatIntegrity_1.validateFireRate)(shooter.id, weaponHash);
+    if (!fireRateResult.allowed)
+        return;
+    // Combat integrity: duplicate hit guard
+    const duplicateResult = (0, CombatIntegrity_1.validateDuplicateHit)(shooter.id, victim.id);
+    if (!duplicateResult.allowed)
+        return;
+    // FFA / Gun Game: no teams, everyone can damage everyone
+    const ffaMatch = (0, FfaMatch_manager_1.getFfaMatchByPlayer)(victim);
+    const gunGameMatch = (0, GunGameMatch_manager_1.getGunGameMatchByPlayer)(victim);
+    if (ffaMatch || gunGameMatch) {
         if (shooter.dimension !== victim.dimension)
             return;
     }
-    const distance = utils_module_1.Utils.distanceToPos(shooter.position, victim.position);
+    else {
+        // Arena (Hopouts): no team damage
+        const match = (0, ArenaMatch_manager_1.getMatchByPlayer)(victim);
+        if (match) {
+            const victimTeam = (0, ArenaMatch_manager_1.getTeam)(match, victim.id);
+            const shooterTeam = (0, ArenaMatch_manager_1.getTeam)(match, shooter.id);
+            if (victimTeam && shooterTeam && victimTeam === shooterTeam)
+                return;
+            if (shooter.dimension !== victim.dimension)
+                return;
+        }
+    }
+    const shotTime = Date.now() - (shooter.ping / 2);
+    const rewindVictimPos = (0, SnapshotManager_1.getRewindPosition)(victim.id, shotTime);
+    const victimPosForDistance = rewindVictimPos ?? victim.position;
+    const distance = utils_module_1.Utils.distanceToPos(shooter.position, victimPosForDistance);
+    // Combat integrity: distance sanity check
+    const distanceResult = (0, CombatIntegrity_1.validateDistance)(weaponHash, distance);
+    if (!distanceResult.allowed)
+        return;
     const isHead = targetBone === "Head";
+    const hitStatus = isHead ? 3 : victim.armour > 0 ? 2 : 1; // 1=health, 2=armour, 3=head (before damage)
+    const hitStatusStr = isHead ? "headshot" : victim.armour > 0 ? "armor" : "health";
     const weaponDmg = getWeaponDamage(weaponHash, Math.max(1, distance));
     const boneMult = getBoneMultiplier(targetBone); // Head = 1.5x, no one-shot head
     const finalDamage = Math.round(weaponDmg * boneMult * 10) / 10;
-    // Arena (Hopouts): apply damage on server; per-weapon cap so .50 etc. kill in fewer shots than weaker guns
-    if (match && match.state === "active") {
+    let damageToShow = finalDamage;
+    const hopoutsMatch = !ffaMatch ? (0, ArenaMatch_manager_1.getMatchByPlayer)(victim) : null;
+    // FFA: apply damage (same as arena), on death handleFfaDeath
+    if (ffaMatch && ffaMatch.state === "active") {
         const w = weaponDamage[weaponHash] ?? { base: DEFAULT_WEAPON_BASE, min: DEFAULT_WEAPON_MIN };
-        const cap = Math.min(ARENA_CAP_MAX, ARENA_CAP_BASE + w.base * 0.5);
-        let dmgLeft = Math.round(finalDamage * ARENA_DAMAGE_MULT * 10) / 10;
+        const cap = Math.min(25, 8 + w.base * 0.5);
+        let dmgLeft = Math.round(finalDamage * 0.75 * 10) / 10;
         if (dmgLeft <= 0)
             dmgLeft = 1;
         dmgLeft = Math.min(dmgLeft, cap);
+        damageToShow = dmgLeft;
         const effectiveHp = Math.max(0, (victim.getVariable("arenaEffectiveHp") ?? 100) - dmgLeft);
         victim.setVariable("arenaEffectiveHp", effectiveHp);
         if (victim.armour > 0) {
@@ -7589,8 +12006,71 @@ mp.events.add("server:PlayerHit", (shooter, victimId, targetBone, weaponHash) =>
             victim.health = Math.max(0, victim.health - dmgLeft);
         }
         if (effectiveHp <= 0) {
+            (0, CombatIntegrity_1.recordKill)(shooter.id, shooter.name, victim.name, isHead);
+            (0, FfaMatch_manager_1.handleFfaDeath)(victim, shooter);
+        }
+        (0, DeathRecapTracker_1.recordDamageToVictim)(victim.id, shooter.id, weaponHash, dmgLeft, targetBone);
+        (0, DeathRecapTracker_1.recordDamageDealt)(shooter.id, victim.id, dmgLeft);
+        (0, CombatIntegrity_1.logSuspiciousShortInterval)(shooter.id, shooter.name, victim.name, timeSinceLastShot);
+        victim.call("client::player:setVitals", [victim.health, victim.armour]);
+        _api_1.RAGERP.cef.emit(victim, "arena", "damageDirection", { direction: getDamageDirection(victim, shooter) });
+    }
+    else if (gunGameMatch && gunGameMatch.state === "active") {
+        const w = weaponDamage[weaponHash] ?? { base: DEFAULT_WEAPON_BASE, min: DEFAULT_WEAPON_MIN };
+        const cap = Math.min(25, 8 + w.base * 0.5);
+        let dmgLeft = Math.round(finalDamage * 0.75 * 10) / 10;
+        if (dmgLeft <= 0)
+            dmgLeft = 1;
+        dmgLeft = Math.min(dmgLeft, cap);
+        damageToShow = dmgLeft;
+        const effectiveHp = Math.max(0, (victim.getVariable("arenaEffectiveHp") ?? 100) - dmgLeft);
+        victim.setVariable("arenaEffectiveHp", effectiveHp);
+        if (victim.armour > 0) {
+            const toArmour = Math.min(victim.armour, dmgLeft);
+            victim.armour = Math.max(0, victim.armour - toArmour);
+            dmgLeft -= toArmour;
+        }
+        if (dmgLeft > 0) {
+            victim.health = Math.max(0, victim.health - dmgLeft);
+        }
+        if (effectiveHp <= 0) {
+            (0, CombatIntegrity_1.recordKill)(shooter.id, shooter.name, victim.name, isHead);
+            (0, GunGameMatch_manager_1.handleGunGameDeath)(victim, shooter);
+        }
+        (0, DeathRecapTracker_1.recordDamageToVictim)(victim.id, shooter.id, weaponHash, dmgLeft, targetBone);
+        (0, DeathRecapTracker_1.recordDamageDealt)(shooter.id, victim.id, dmgLeft);
+        (0, CombatIntegrity_1.logSuspiciousShortInterval)(shooter.id, shooter.name, victim.name, timeSinceLastShot);
+        victim.call("client::player:setVitals", [victim.health, victim.armour]);
+        _api_1.RAGERP.cef.emit(victim, "arena", "damageDirection", { direction: getDamageDirection(victim, shooter) });
+    }
+    else if (hopoutsMatch && hopoutsMatch.state === "active") {
+        const w = weaponDamage[weaponHash] ?? { base: DEFAULT_WEAPON_BASE, min: DEFAULT_WEAPON_MIN };
+        const cap = Math.min(ARENA_CAP_MAX, ARENA_CAP_BASE + w.base * 0.5);
+        let dmgLeft = Math.round(finalDamage * ARENA_DAMAGE_MULT * 10) / 10;
+        if (dmgLeft <= 0)
+            dmgLeft = 1;
+        dmgLeft = Math.min(dmgLeft, cap);
+        const damageThisHit = dmgLeft;
+        damageToShow = damageThisHit;
+        const effectiveHp = Math.max(0, (victim.getVariable("arenaEffectiveHp") ?? 100) - dmgLeft);
+        victim.setVariable("arenaEffectiveHp", effectiveHp);
+        if (victim.armour > 0) {
+            const toArmour = Math.min(victim.armour, dmgLeft);
+            victim.armour = Math.max(0, victim.armour - toArmour);
+            dmgLeft -= toArmour;
+        }
+        if (dmgLeft > 0) {
+            victim.health = Math.max(0, victim.health - dmgLeft);
+        }
+        if (effectiveHp <= 0) {
+            (0, CombatIntegrity_1.recordKill)(shooter.id, shooter.name, victim.name, isHead);
             (0, ArenaMatch_manager_1.handleArenaDeath)(victim, shooter);
         }
+        (0, DeathRecapTracker_1.recordDamageToVictim)(victim.id, shooter.id, weaponHash, damageThisHit, targetBone);
+        (0, DeathRecapTracker_1.recordDamageDealt)(shooter.id, victim.id, damageThisHit);
+        (0, CombatIntegrity_1.logSuspiciousShortInterval)(shooter.id, shooter.name, victim.name, timeSinceLastShot);
+        victim.call("client::player:setVitals", [victim.health, victim.armour]);
+        _api_1.RAGERP.cef.emit(victim, "arena", "damageDirection", { direction: getDamageDirection(victim, shooter) });
     }
     else {
         // Freeroam: apply damage on server so it actually registers (server-authoritative)
@@ -7603,7 +12083,10 @@ mp.events.add("server:PlayerHit", (shooter, victimId, targetBone, weaponHash) =>
         if (dmgLeft > 0) {
             victim.health = Math.max(0, victim.health - dmgLeft);
         }
-        // Push server-authoritative vitals to victim's client so HP/AP UI updates (engine may not sync immediately)
+        if (victim.health <= 0) {
+            (0, CombatIntegrity_1.recordKill)(shooter.id, shooter.name, victim.name, isHead);
+        }
+        (0, CombatIntegrity_1.logSuspiciousShortInterval)(shooter.id, shooter.name, victim.name, timeSinceLastShot);
         victim.call("client::player:setVitals", [victim.health, victim.armour]);
     }
     (0, AdminLog_manager_1.logDamageHit)({
@@ -7612,10 +12095,9 @@ mp.events.add("server:PlayerHit", (shooter, victimId, targetBone, weaponHash) =>
         weaponHash,
         damage: finalDamage,
         distance,
-        inArena: !!match
+        inArena: !!ffaMatch || !!gunGameMatch || !!hopoutsMatch
     });
-    const hitStatus = isHead ? 3 : victim.armour > 0 ? 2 : 1; // 1=health, 2=armour, 3=head
-    shooter.call("client:ShowHitmarker", [finalDamage, victim.position.x, victim.position.y, victim.position.z, hitStatus]);
+    shooter.call("client:ShowHitmarker", [damageToShow, victim.position.x, victim.position.y, victim.position.z, hitStatus, hitStatusStr]);
 });
 
 
@@ -7630,6 +12112,8 @@ mp.events.add("server:PlayerHit", (shooter, victimId, targetBone, weaponHash) =>
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const ArenaMatch_manager_1 = __webpack_require__(/*! @arena/ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
+const FfaMatch_manager_1 = __webpack_require__(/*! @modes/ffa/FfaMatch.manager */ "./source/server/modes/ffa/FfaMatch.manager.ts");
+const GunGameMatch_manager_1 = __webpack_require__(/*! @modes/gungame/GunGameMatch.manager */ "./source/server/modes/gungame/GunGameMatch.manager.ts");
 const AdminLog_manager_1 = __webpack_require__(/*! ../admin/AdminLog.manager */ "./source/server/admin/AdminLog.manager.ts");
 const LEGION_SQUARE = { x: 213.0, y: -810.0, z: 30.73, heading: 160.0 };
 /** Freeroam: instant respawn at Legion Square with full health/armor (no death screen). */
@@ -7651,6 +12135,16 @@ function respawnFreeroamAtLegionSquare(player) {
 function playerDeath(player, _reason, killer) {
     if (!player || !mp.players.exists(player) || !player.character)
         return;
+    const inFfa = (0, FfaMatch_manager_1.isPlayerInFfaMatch)(player);
+    if (inFfa && (0, FfaMatch_manager_1.handleFfaDeath)(player, killer)) {
+        (0, AdminLog_manager_1.logKill)({ killer, victim: player, reason: _reason ?? null, inArena: true });
+        return;
+    }
+    const inGunGame = (0, GunGameMatch_manager_1.isPlayerInGunGameMatch)(player);
+    if (inGunGame && (0, GunGameMatch_manager_1.handleGunGameDeath)(player, killer)) {
+        (0, AdminLog_manager_1.logKill)({ killer, victim: player, reason: _reason ?? null, inArena: true });
+        return;
+    }
     const inArena = (0, ArenaMatch_manager_1.isPlayerInArenaMatch)(player);
     if (inArena && (0, ArenaMatch_manager_1.handleArenaDeath)(player, killer)) {
         (0, AdminLog_manager_1.logKill)({ killer, victim: player, reason: _reason ?? null, inArena: true });
@@ -7696,6 +12190,92 @@ function setPlayerToInjuredState(player) {
 
 /***/ },
 
+/***/ "./source/server/serverevents/Ffa.event.ts"
+/*!*************************************************!*\
+  !*** ./source/server/serverevents/Ffa.event.ts ***!
+  \*************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const Ffa_module_1 = __webpack_require__(/*! @modes/ffa/Ffa.module */ "./source/server/modes/ffa/Ffa.module.ts");
+const FfaMatch_manager_1 = __webpack_require__(/*! @modes/ffa/FfaMatch.manager */ "./source/server/modes/ffa/FfaMatch.manager.ts");
+_api_1.RAGERP.cef.register("ffa", "joinQueue", async (player) => {
+    const ok = (0, Ffa_module_1.joinFfaQueue)(player);
+    if (!ok) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Could not join FFA queue.");
+    }
+});
+_api_1.RAGERP.cef.register("ffa", "leaveQueue", async (player) => {
+    (0, Ffa_module_1.leaveFfaQueue)(player);
+});
+_api_1.RAGERP.cef.register("ffa", "leaveMatch", async (player) => {
+    if ((0, FfaMatch_manager_1.leaveFfaMatch)(player)) {
+        player.showNotify("success" /* RageShared.Enums.NotifyType.TYPE_SUCCESS */, "Left FFA match.");
+    }
+});
+
+
+/***/ },
+
+/***/ "./source/server/serverevents/GunGame.event.ts"
+/*!*****************************************************!*\
+  !*** ./source/server/serverevents/GunGame.event.ts ***!
+  \*****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const GunGame_module_1 = __webpack_require__(/*! @modes/gungame/GunGame.module */ "./source/server/modes/gungame/GunGame.module.ts");
+const GunGameMatch_manager_1 = __webpack_require__(/*! @modes/gungame/GunGameMatch.manager */ "./source/server/modes/gungame/GunGameMatch.manager.ts");
+_api_1.RAGERP.cef.register("gungame", "joinQueue", async (player) => {
+    const ok = (0, GunGame_module_1.joinGunGameQueue)(player);
+    if (!ok) {
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Could not join Gun Game queue.");
+    }
+});
+_api_1.RAGERP.cef.register("gungame", "leaveQueue", async (player) => {
+    (0, GunGame_module_1.leaveGunGameQueue)(player);
+});
+_api_1.RAGERP.cef.register("gungame", "leaveMatch", async (player) => {
+    if ((0, GunGameMatch_manager_1.leaveGunGameMatch)(player)) {
+        player.showNotify("success" /* RageShared.Enums.NotifyType.TYPE_SUCCESS */, "Left Gun Game match.");
+    }
+});
+
+
+/***/ },
+
+/***/ "./source/server/serverevents/Leaderboard.event.ts"
+/*!*********************************************************!*\
+  !*** ./source/server/serverevents/Leaderboard.event.ts ***!
+  \*********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const LeaderboardManager_1 = __webpack_require__(/*! @modules/stats/LeaderboardManager */ "./source/server/modules/stats/LeaderboardManager.ts");
+_api_1.RAGERP.cef.register("leaderboard", "getTopPlayers", async (player) => {
+    try {
+        const result = await (0, LeaderboardManager_1.getTopPlayers)(100);
+        _api_1.RAGERP.cef.emit(player, "leaderboard", "setTopPlayers", {
+            entries: result.entries,
+            seasonName: result.seasonName ?? null,
+            useSeasonal: result.useSeasonal ?? false
+        });
+    }
+    catch (err) {
+        console.error("[Leaderboard] getTopPlayers failed:", err);
+        _api_1.RAGERP.cef.emit(player, "leaderboard", "setTopPlayers", { entries: [], seasonName: null, useSeasonal: false });
+    }
+});
+
+
+/***/ },
+
 /***/ "./source/server/serverevents/MainMenu.event.ts"
 /*!******************************************************!*\
   !*** ./source/server/serverevents/MainMenu.event.ts ***!
@@ -7706,8 +12286,11 @@ function setPlayerToInjuredState(player) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
 const Arena_module_1 = __webpack_require__(/*! @arena/Arena.module */ "./source/server/arena/Arena.module.ts");
+const PartyManager_1 = __webpack_require__(/*! @modules/party/PartyManager */ "./source/server/modules/party/PartyManager.ts");
 const ArenaPresets_asset_1 = __webpack_require__(/*! @arena/ArenaPresets.asset */ "./source/server/arena/ArenaPresets.asset.ts");
 const ArenaMatch_manager_1 = __webpack_require__(/*! @arena/ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
+const Ffa_module_1 = __webpack_require__(/*! @modes/ffa/Ffa.module */ "./source/server/modes/ffa/Ffa.module.ts");
+const GunGame_module_1 = __webpack_require__(/*! @modes/gungame/GunGame.module */ "./source/server/modes/gungame/GunGame.module.ts");
 const Character_entity_1 = __webpack_require__(/*! @entities/Character.entity */ "./source/server/database/entity/Character.entity.ts");
 const ArenaConfig_1 = __webpack_require__(/*! @arena/ArenaConfig */ "./source/server/arena/ArenaConfig.ts");
 _api_1.RAGERP.cef.register("mainmenu", "playFreeroam", async (player) => {
@@ -7743,6 +12326,14 @@ _api_1.RAGERP.cef.register("mainmenu", "openSettings", (player) => {
     _api_1.RAGERP.cef.startPage(player, "settings");
     _api_1.RAGERP.cef.emit(player, "system", "setPage", "settings");
 });
+_api_1.RAGERP.cef.register("mainmenu", "requestAdminLevel", (player) => {
+    const level = player?.account?.adminlevel ?? 0;
+    _api_1.RAGERP.cef.emit(player, "mainmenu", "setAdminLevel", { adminLevel: level });
+});
+_api_1.RAGERP.cef.register("mainmenu", "requestPlayerList", (player) => {
+    const players = mp.players.toArray().map((p) => ({ id: p.id, name: p.name, ping: p.ping }));
+    _api_1.RAGERP.cef.emit(player, "playerList", "setPlayers", players);
+});
 _api_1.RAGERP.cef.register("mainmenu", "getArenaMaps", (player) => {
     const presets = (0, ArenaPresets_asset_1.getArenaPresets)();
     _api_1.RAGERP.cef.emit(player, "mainmenu", "setArenaMaps", {
@@ -7754,28 +12345,151 @@ _api_1.RAGERP.cef.register("mainmenu", "playArena", async (player, data) => {
         _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "No character loaded." });
         return;
     }
+    let mode = "hopouts";
     let size = 1;
     let mapId;
+    let asParty = false;
     try {
         const parsed = data ? (typeof data === "string" ? JSON.parse(data) : data) : null;
-        if (parsed && typeof parsed === "object" && parsed.size !== undefined) {
-            const s = Number(parsed.size);
-            if (ArenaConfig_1.QUEUE_SIZES.includes(s))
-                size = s;
-        }
-        if (parsed && typeof parsed === "object" && parsed.map) {
-            mapId = String(parsed.map);
+        if (parsed && typeof parsed === "object") {
+            if (parsed.mode === "ffa")
+                mode = "ffa";
+            if (parsed.mode === "gungame")
+                mode = "gungame";
+            if (parsed.size !== undefined) {
+                const s = Number(parsed.size);
+                if (ArenaConfig_1.QUEUE_SIZES.includes(s))
+                    size = s;
+            }
+            if (parsed.map)
+                mapId = String(parsed.map);
+            if (parsed.asParty === true)
+                asParty = true;
         }
     }
     catch {
         /* default */
     }
-    if ((0, Arena_module_1.joinQueue)(player, size, mapId)) {
+    if (mode === "ffa") {
+        const ok = (0, Ffa_module_1.joinFfaQueue)(player);
+        if (!ok) {
+            _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Could not join FFA queue. You may already be in it." });
+        }
+        return;
+    }
+    if (mode === "gungame") {
+        const ok = (0, GunGame_module_1.joinGunGameQueue)(player);
+        if (!ok) {
+            _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Could not join Gun Game queue. You may already be in it." });
+        }
+        return;
+    }
+    const party = (0, PartyManager_1.getPartyByPlayer)(player);
+    const usePartyQueue = asParty && party && (0, PartyManager_1.isLeader)(player);
+    const ok = usePartyQueue ? (0, Arena_module_1.joinQueueWithParty)(player, size, mapId) : (0, Arena_module_1.joinQueue)(player, size, mapId);
+    if (ok) {
         _api_1.RAGERP.cef.startPage(player, "arena_lobby");
         _api_1.RAGERP.cef.emit(player, "system", "setPage", "arena_lobby");
     }
     else {
         _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Could not join queue. You may already be in it." });
+    }
+});
+
+
+/***/ },
+
+/***/ "./source/server/serverevents/Party.event.ts"
+/*!***************************************************!*\
+  !*** ./source/server/serverevents/Party.event.ts ***!
+  \***************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PartyEvents_1 = __webpack_require__(/*! @modules/party/PartyEvents */ "./source/server/modules/party/PartyEvents.ts");
+_api_1.RAGERP.cef.register("party", "createParty", (player) => {
+    const result = (0, PartyEvents_1.onPartyCreate)(player);
+    if (!result.ok) {
+        _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: result.reason ?? "Could not create party." });
+    }
+});
+_api_1.RAGERP.cef.register("party", "invitePlayer", (player, data) => {
+    try {
+        const parsed = typeof data === "string" ? JSON.parse(data) : data;
+        const targetId = typeof parsed === "object" && parsed?.targetId != null ? Number(parsed.targetId) : null;
+        if (targetId == null || !Number.isFinite(targetId))
+            return;
+        const target = mp.players.at(targetId);
+        if (!target || !mp.players.exists(target)) {
+            _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Player not found." });
+            return;
+        }
+        const result = (0, PartyEvents_1.onPartyInvite)(player, target);
+        if (!result.ok) {
+            _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: result.reason ?? "Could not invite." });
+        }
+    }
+    catch {
+        _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Invalid invite data." });
+    }
+});
+_api_1.RAGERP.cef.register("party", "acceptInvite", (player, data) => {
+    try {
+        const parsed = typeof data === "string" ? JSON.parse(data) : data;
+        const partyId = typeof parsed === "object" && parsed?.partyId ? String(parsed.partyId) : null;
+        if (!partyId)
+            return;
+        const result = (0, PartyEvents_1.onPartyAccept)(player, partyId);
+        if (!result.ok) {
+            _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: result.reason ?? "Could not accept invite." });
+        }
+    }
+    catch {
+        _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Invalid data." });
+    }
+});
+_api_1.RAGERP.cef.register("party", "declineInvite", (player, data) => {
+    try {
+        const parsed = typeof data === "string" ? JSON.parse(data) : data;
+        const partyId = typeof parsed === "object" && parsed?.partyId ? String(parsed.partyId) : null;
+        if (!partyId)
+            return;
+        (0, PartyEvents_1.onPartyDecline)(player, partyId);
+    }
+    catch {
+        /* ignore */
+    }
+});
+_api_1.RAGERP.cef.register("party", "leaveParty", (player) => {
+    const result = (0, PartyEvents_1.onPartyLeave)(player);
+    if (!result.ok) {
+        _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: result.reason ?? "Could not leave party." });
+    }
+});
+_api_1.RAGERP.cef.register("party", "kickMember", (player, data) => {
+    try {
+        const parsed = typeof data === "string" ? JSON.parse(data) : data;
+        const targetId = typeof parsed === "object" && parsed?.targetId != null ? Number(parsed.targetId) : null;
+        if (targetId == null || !Number.isFinite(targetId))
+            return;
+        const target = mp.players.at(targetId);
+        if (!target || !mp.players.exists(target))
+            return;
+        const result = (0, PartyEvents_1.onPartyKick)(player, target);
+        if (!result.ok) {
+            _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: result.reason ?? "Could not kick." });
+        }
+    }
+    catch {
+        _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: "Invalid data." });
+    }
+});
+_api_1.RAGERP.cef.register("party", "disbandParty", (player) => {
+    const result = (0, PartyEvents_1.onPartyDisband)(player);
+    if (!result.ok) {
+        _api_1.RAGERP.cef.emit(player, "mainmenu", "playError", { message: result.reason ?? "Could not disband." });
     }
 });
 
@@ -7797,6 +12511,14 @@ const Ban_entity_1 = __webpack_require__(/*! @entities/Ban.entity */ "./source/s
 const Character_entity_1 = __webpack_require__(/*! @entities/Character.entity */ "./source/server/database/entity/Character.entity.ts");
 const Attachments_module_1 = __webpack_require__(/*! @modules/Attachments.module */ "./source/server/modules/Attachments.module.ts");
 const ArenaMatch_manager_1 = __webpack_require__(/*! @arena/ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
+const Arena_module_1 = __webpack_require__(/*! @arena/Arena.module */ "./source/server/arena/Arena.module.ts");
+const Ffa_module_1 = __webpack_require__(/*! @modes/ffa/Ffa.module */ "./source/server/modes/ffa/Ffa.module.ts");
+const FfaMatch_manager_1 = __webpack_require__(/*! @modes/ffa/FfaMatch.manager */ "./source/server/modes/ffa/FfaMatch.manager.ts");
+const GunGame_module_1 = __webpack_require__(/*! @modes/gungame/GunGame.module */ "./source/server/modes/gungame/GunGame.module.ts");
+const GunGameMatch_manager_1 = __webpack_require__(/*! @modes/gungame/GunGameMatch.manager */ "./source/server/modes/gungame/GunGameMatch.manager.ts");
+const PartyManager_1 = __webpack_require__(/*! @modules/party/PartyManager */ "./source/server/modules/party/PartyManager.ts");
+const SnapshotManager_1 = __webpack_require__(/*! @modules/combat/SnapshotManager */ "./source/server/modules/combat/SnapshotManager.ts");
+const CombatIntegrity_1 = __webpack_require__(/*! @modules/combat/CombatIntegrity */ "./source/server/modules/combat/CombatIntegrity.ts");
 const LEGION_SQUARE = { x: 213.0, y: -810.0, z: 30.73, heading: 160.0 };
 async function onPlayerJoin(player) {
     try {
@@ -7827,9 +12549,21 @@ async function onPlayerJoin(player) {
     }
 }
 async function onPlayerQuit(player) {
+    (0, SnapshotManager_1.clearPlayerSnapshots)(player.id);
+    (0, CombatIntegrity_1.clearPlayerCombatTracking)(player.id);
     if ((0, ArenaMatch_manager_1.isPlayerInArenaMatch)(player)) {
-        (0, ArenaMatch_manager_1.leaveMatch)(player);
+        (0, ArenaMatch_manager_1.handleMatchDisconnect)(player);
     }
+    if ((0, FfaMatch_manager_1.isPlayerInFfaMatch)(player)) {
+        (0, FfaMatch_manager_1.leaveFfaMatch)(player);
+    }
+    if ((0, GunGameMatch_manager_1.isPlayerInGunGameMatch)(player)) {
+        (0, GunGameMatch_manager_1.leaveGunGameMatch)(player);
+    }
+    (0, GunGame_module_1.onPlayerDisconnectFromGunGameQueue)(player.id);
+    (0, Ffa_module_1.onPlayerDisconnectFromFfaQueue)(player.id);
+    (0, Arena_module_1.onPlayerDisconnectFromQueue)(player.id);
+    (0, PartyManager_1.onPlayerDisconnect)(player.id);
     const character = player.character;
     if (!character)
         return;
@@ -7863,7 +12597,6 @@ function startSpectate(spectator, target) {
         return;
     if (spectator.getVariable("isSpectating")) {
         stopSpectate(spectator);
-        return;
     }
     spectator.lastPosition = new mp.Vector3(spectator.position.x, spectator.position.y, spectator.position.z);
     spectator.position = new mp.Vector3(target.position.x, target.position.y, target.position.z - 15);
@@ -7959,6 +12692,129 @@ mp.events.add("playerEnterColshape", (player, shape) => {
 mp.events.add("playerExitColshape", (player, shape) => {
     if (typeof shape.exitHandler !== "undefined")
         shape.exitHandler(player);
+});
+
+
+/***/ },
+
+/***/ "./source/server/serverevents/Profile.event.ts"
+/*!*****************************************************!*\
+  !*** ./source/server/serverevents/Profile.event.ts ***!
+  \*****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const ProfileManager_1 = __webpack_require__(/*! @modules/stats/ProfileManager */ "./source/server/modules/stats/ProfileManager.ts");
+const MatchHistoryManager_1 = __webpack_require__(/*! @modules/stats/MatchHistoryManager */ "./source/server/modules/stats/MatchHistoryManager.ts");
+_api_1.RAGERP.cef.register("profile", "getMyProfile", async (player) => {
+    const characterId = player.character?.id;
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "profile", "setPlayerProfile", { profile: null });
+        return;
+    }
+    try {
+        const profile = await (0, ProfileManager_1.getPlayerProfileByCharacterId)(characterId);
+        _api_1.RAGERP.cef.emit(player, "profile", "setPlayerProfile", { profile });
+    }
+    catch (err) {
+        console.error("[Profile] getMyProfile failed:", err);
+        _api_1.RAGERP.cef.emit(player, "profile", "setPlayerProfile", { profile: null });
+    }
+});
+_api_1.RAGERP.cef.register("profile", "getPlayerProfile", async (player, data) => {
+    let characterId;
+    try {
+        const parsed = data ? (typeof data === "string" ? JSON.parse(data) : data) : null;
+        if (parsed && typeof parsed === "object" && typeof parsed.characterId === "number") {
+            characterId = parsed.characterId;
+        }
+    }
+    catch {
+        /* invalid */
+    }
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "profile", "setPlayerProfile", { profile: null });
+        return;
+    }
+    try {
+        const profile = await (0, ProfileManager_1.getPlayerProfileByCharacterId)(characterId);
+        _api_1.RAGERP.cef.emit(player, "profile", "setPlayerProfile", { profile });
+    }
+    catch (err) {
+        console.error("[Profile] getPlayerProfile failed:", err);
+        _api_1.RAGERP.cef.emit(player, "profile", "setPlayerProfile", { profile: null });
+    }
+});
+_api_1.RAGERP.cef.register("profile", "getRecentMatches", async (player, data) => {
+    let characterId;
+    try {
+        const parsed = data ? (typeof data === "string" ? JSON.parse(data) : data) : null;
+        if (parsed && typeof parsed === "object" && typeof parsed.characterId === "number") {
+            characterId = parsed.characterId;
+        }
+    }
+    catch {
+        /* invalid */
+    }
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "profile", "setRecentMatches", { matches: [] });
+        return;
+    }
+    try {
+        const matches = await (0, MatchHistoryManager_1.getRecentMatchesByCharacterId)(characterId, 10);
+        _api_1.RAGERP.cef.emit(player, "profile", "setRecentMatches", { matches });
+    }
+    catch (err) {
+        console.error("[Profile] getRecentMatches failed:", err);
+        _api_1.RAGERP.cef.emit(player, "profile", "setRecentMatches", { matches: [] });
+    }
+});
+
+
+/***/ },
+
+/***/ "./source/server/serverevents/Progression.event.ts"
+/*!*********************************************************!*\
+  !*** ./source/server/serverevents/Progression.event.ts ***!
+  \*********************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const PrestigeManager_1 = __webpack_require__(/*! @modules/stats/PrestigeManager */ "./source/server/modules/stats/PrestigeManager.ts");
+_api_1.RAGERP.cef.register("progression", "getPrestigeStatus", async (player) => {
+    const characterId = player.character?.id;
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "progression", "setPrestigeStatus", { status: null });
+        return;
+    }
+    try {
+        const status = await (0, PrestigeManager_1.getPrestigeStatus)(characterId);
+        _api_1.RAGERP.cef.emit(player, "progression", "setPrestigeStatus", { status });
+    }
+    catch (err) {
+        console.error("[Progression] getPrestigeStatus failed:", err);
+        _api_1.RAGERP.cef.emit(player, "progression", "setPrestigeStatus", { status: null });
+    }
+});
+_api_1.RAGERP.cef.register("progression", "prestige", async (player) => {
+    const characterId = player.character?.id;
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "progression", "prestigeResult", { success: false, error: "No character loaded." });
+        return;
+    }
+    try {
+        const result = await (0, PrestigeManager_1.prestigePlayer)(characterId);
+        _api_1.RAGERP.cef.emit(player, "progression", "prestigeResult", result);
+    }
+    catch (err) {
+        console.error("[Progression] prestige failed:", err);
+        _api_1.RAGERP.cef.emit(player, "progression", "prestigeResult", { success: false, error: "Prestige failed." });
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Prestige failed.");
+    }
 });
 
 
@@ -8136,6 +12992,69 @@ _api_1.RAGERP.cef.register("report", "closePage", async (player) => {
 
 /***/ },
 
+/***/ "./source/server/serverevents/Season.event.ts"
+/*!****************************************************!*\
+  !*** ./source/server/serverevents/Season.event.ts ***!
+  \****************************************************/
+(__unused_webpack_module, exports, __webpack_require__) {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const _api_1 = __webpack_require__(/*! @api */ "./source/server/api/index.ts");
+const SeasonRewardsManager_1 = __webpack_require__(/*! @modules/seasons/SeasonRewardsManager */ "./source/server/modules/seasons/SeasonRewardsManager.ts");
+_api_1.RAGERP.cef.register("seasons", "getMyRewards", async (player) => {
+    const characterId = player.character?.id;
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "seasons", "setMyRewards", { rewards: [] });
+        return;
+    }
+    try {
+        const rewards = await (0, SeasonRewardsManager_1.getSeasonRewardsForCharacter)(characterId);
+        _api_1.RAGERP.cef.emit(player, "seasons", "setMyRewards", { rewards });
+    }
+    catch (err) {
+        console.error("[Seasons] getMyRewards failed:", err);
+        _api_1.RAGERP.cef.emit(player, "seasons", "setMyRewards", { rewards: [] });
+    }
+});
+_api_1.RAGERP.cef.register("seasons", "claimReward", async (player, data) => {
+    const characterId = player.character?.id;
+    if (characterId == null) {
+        _api_1.RAGERP.cef.emit(player, "seasons", "claimRewardResult", { success: false, error: "No character loaded." });
+        return;
+    }
+    let rewardId;
+    try {
+        const parsed = data ? (typeof data === "string" ? JSON.parse(data) : data) : null;
+        if (parsed && typeof parsed === "object" && typeof parsed.rewardId === "number") {
+            rewardId = parsed.rewardId;
+        }
+    }
+    catch {
+        /* invalid */
+    }
+    if (rewardId == null) {
+        _api_1.RAGERP.cef.emit(player, "seasons", "claimRewardResult", { success: false, error: "Invalid reward ID." });
+        return;
+    }
+    try {
+        const result = await (0, SeasonRewardsManager_1.claimSeasonReward)(characterId, rewardId);
+        _api_1.RAGERP.cef.emit(player, "seasons", "claimRewardResult", result);
+        if (result.success) {
+            const rewards = await (0, SeasonRewardsManager_1.getSeasonRewardsForCharacter)(characterId);
+            _api_1.RAGERP.cef.emit(player, "seasons", "setMyRewards", { rewards });
+        }
+    }
+    catch (err) {
+        console.error("[Seasons] claimReward failed:", err);
+        _api_1.RAGERP.cef.emit(player, "seasons", "claimRewardResult", { success: false, error: "Claim failed." });
+        player.showNotify("error" /* RageShared.Enums.NotifyType.TYPE_ERROR */, "Failed to claim season reward.");
+    }
+});
+
+
+/***/ },
+
 /***/ "./source/server/serverevents/Vehicle.event.ts"
 /*!*****************************************************!*\
   !*** ./source/server/serverevents/Vehicle.event.ts ***!
@@ -8280,7 +13199,9 @@ _api_1.RAGERP.commands.add({
 /**
  * Local and team voice: client requests add/remove listeners; server enables/disables voice stream.
  * Arena teammates are set in ArenaMatch.manager via arenaTeammateIds variable.
+ * Outside Hopouts: radio uses radioChannel (set via /setradio).
  */
+const DEFAULT_RADIO_CHANNEL = 1000;
 mp.events.add("server::voice:addListener", (player, targetId) => {
     if (player == null || !mp.players.exists(player))
         return;
@@ -8294,6 +13215,22 @@ mp.events.add("server::voice:removeListener", (player, targetId) => {
     const target = typeof targetId === "number" ? mp.players.at(targetId) : null;
     if (target && mp.players.exists(target))
         player.disableVoiceTo(target);
+});
+mp.events.add("server::voice:requestRadioListeners", (player) => {
+    if (!player || !mp.players.exists(player))
+        return;
+    const channel = player.getVariable("radioChannel") ?? DEFAULT_RADIO_CHANNEL;
+    const ids = [];
+    mp.players.forEach((p) => {
+        if (!p || !mp.players.exists(p) || p.id === player.id)
+            return;
+        if (p.dimension !== player.dimension)
+            return;
+        const pChannel = p.getVariable("radioChannel") ?? DEFAULT_RADIO_CHANNEL;
+        if (pChannel === channel)
+            ids.push(p.id);
+    });
+    player.call("client::voice:radioListeners", [ids]);
 });
 
 
@@ -9535,9 +14472,19 @@ __webpack_require__(/*! @events/Wardrobe.event */ "./source/server/serverevents/
 __webpack_require__(/*! @events/MainMenu.event */ "./source/server/serverevents/MainMenu.event.ts");
 __webpack_require__(/*! @events/PlayerMenu.event */ "./source/server/serverevents/PlayerMenu.event.ts");
 __webpack_require__(/*! @events/Admin.event */ "./source/server/serverevents/Admin.event.ts");
+const SnapshotManager_1 = __webpack_require__(/*! @modules/combat/SnapshotManager */ "./source/server/modules/combat/SnapshotManager.ts");
+const SeasonManager_1 = __webpack_require__(/*! @modules/seasons/SeasonManager */ "./source/server/modules/seasons/SeasonManager.ts");
 __webpack_require__(/*! @arena/ArenaMatch.manager */ "./source/server/arena/ArenaMatch.manager.ts");
 __webpack_require__(/*! @events/Arena.event */ "./source/server/serverevents/Arena.event.ts");
+__webpack_require__(/*! @events/Party.event */ "./source/server/serverevents/Party.event.ts");
 __webpack_require__(/*! @events/Report.event */ "./source/server/serverevents/Report.event.ts");
+__webpack_require__(/*! @events/Leaderboard.event */ "./source/server/serverevents/Leaderboard.event.ts");
+__webpack_require__(/*! @events/Profile.event */ "./source/server/serverevents/Profile.event.ts");
+__webpack_require__(/*! @events/Challenge.event */ "./source/server/serverevents/Challenge.event.ts");
+__webpack_require__(/*! @events/Ffa.event */ "./source/server/serverevents/Ffa.event.ts");
+__webpack_require__(/*! @events/GunGame.event */ "./source/server/serverevents/GunGame.event.ts");
+__webpack_require__(/*! @events/Season.event */ "./source/server/serverevents/Season.event.ts");
+__webpack_require__(/*! @events/Progression.event */ "./source/server/serverevents/Progression.event.ts");
 mp.events.add("server::client:debug", (_, message, ...args) => {
     if (!process.env.DEBUG_MODE)
         return;
@@ -9549,6 +14496,8 @@ mp.events.add("server::client:debug", (_, message, ...args) => {
         .initialize()
         .then(() => console.log(`${(0, colorette_1.green)("[DONE]")} Database connected!`))
         .catch((err) => console.error(`${(0, colorette_1.red)("[ERROR]")} Database connection error:`, err));
+    (0, SnapshotManager_1.startSnapshotRecording)();
+    (0, SeasonManager_1.ensureDefaultSeason)();
     console.log(`${(0, colorette_1.green)("[DONE]")} Server Events: ${Object.values(mp.events.binded).length}`);
     console.log(`${(0, colorette_1.green)("[DONE]")} Cef Events: ${_api_1.RAGERP.cef.poolSize}`);
     console.log(`${(0, colorette_1.green)("[DONE]")} Total Commands: ${_api_1.RAGERP.commands._commands.size}`);

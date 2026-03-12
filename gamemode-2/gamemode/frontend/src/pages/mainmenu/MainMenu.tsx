@@ -32,9 +32,9 @@ const MainMenu: React.FC = observer(() => {
     }, []);
 
     React.useEffect(() => {
-        EventManager.emitClient("mainmenu", "scene", { showPlayer: activeNav === "clothing" });
+        EventManager.emitClient("mainmenu", "scene", { showPlayer: activeNav === "clothing" || activeNav === "loadout" });
         return () => {
-            EventManager.emitClient("mainmenu", "scene", { showPlayer: true });
+            EventManager.emitClient("mainmenu", "scene", { showPlayer: false });
         };
     }, [activeNav]);
 

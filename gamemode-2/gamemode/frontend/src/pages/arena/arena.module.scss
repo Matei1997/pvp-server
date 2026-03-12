@@ -5,7 +5,7 @@
     inset: 0;
     width: 100vw;
     height: 100vh;
-    background: #0F1115;
+    background: $v0-bg;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     color: #EDEDED;
     display: flex;
@@ -48,13 +48,13 @@
     justify-content: center;
     width: 200px;
     height: 80px;
-    background: #16191D;
-    border: 1px solid #2C2E33;
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     transition: all 0.15s ease;
 
     &:hover {
-        border-color: #5E6AD2;
+        border-color: $v0-accent;
     }
 
     .playerName {
@@ -66,7 +66,7 @@
     .ready {
         font-size: 12px;
         font-weight: 600;
-        color: #5E6AD2;
+        color: $v0-accent;
         margin-top: 4px;
     }
 }
@@ -87,16 +87,16 @@
     transition: all 0.15s ease;
 
     &.acceptBtn {
-        background: #5E6AD2;
-        color: #EDEDED;
+        background: $v0-accent;
+        color: $v0-bg;
 
         &:hover {
-            background: #4a56b8;
+            box-shadow: 0 0 18px rgba(0, 224, 198, 0.3);
         }
     }
 
     &.declineBtn {
-        background: #2C2E33;
+        background: $v0-panel;
         color: #EDEDED;
         border: 1px solid #3d3f44;
 
@@ -157,8 +157,8 @@
     justify-content: flex-end;
     width: 240px;
     height: 320px;
-    background: #16191D;
-    border: 1px solid #2C2E33;
+    background: $v0-panel;
+    border: 1px solid $v0-border;
     border-radius: 8px;
     padding-bottom: 24px;
     cursor: pointer;
@@ -167,20 +167,20 @@
     overflow: hidden;
 
     &:hover {
-        border-color: #5E6AD2;
+        border-color: $v0-accent;
         transform: translateY(-2px);
 
         .mapIcon {
-            color: rgba(94, 106, 210, 0.3);
+            color: rgba(0, 224, 198, 0.3);
         }
     }
 
     &.mapCardSelected {
-        border-color: #5E6AD2;
-        box-shadow: 0 0 0 1px #5E6AD2;
+        border-color: $v0-accent;
+        box-shadow: 0 0 0 1px $v0-accent;
 
         .mapIcon {
-            color: rgba(94, 106, 210, 0.8);
+            color: rgba(0, 224, 198, 0.8);
         }
     }
 
@@ -220,7 +220,7 @@
         top: 12px;
         right: 12px;
         font-size: 16px;
-        color: #5E6AD2;
+        color: $v0-accent;
         font-weight: bold;
         z-index: 1;
     }

@@ -1940,4 +1940,75 @@ Correct frontend structure so each mode has the right UI flow, and add missing U
 
 ---
 
-*Pass 1: Skeleton. Pass 2: Hopouts containment. Pass 3: Generic match infrastructure. Pass 4: Player statistics. Pass 4.5: Death/damage/stats stabilization. Pass 12: Combat systems audit. Pass 13: Recoil validation. Pass 14: Combat fixes (per-weapon recoil). Pass 15: Combat polish. Pass 16: Party system architecture. Pass 17: Party queue integration. Pass 18: Party system hardening. Pass 19: Party UI audit. Pass 20: Party UI wiring. Pass 21: Party invite flow completion. Pass 22: Auth/character simplification. Pass 23: Hit registration + lag compensation audit. Pass 24: Lag compensation implementation (minimal). Pass 25: Match ready system. Pass 26: Match reconnect protection. Pass 27: Frontend UI architecture audit. Pass 28: Frontend refactor pass. Pass 29: Disconnected player round-state rules. Pass 30: Combat integrity pass. Pass 31: UI rebuild spec. Pass 32: Arena HUD rebuild. Pass 33: Scoreboard rebuild. Pass 34: Death recap system. Pass 35: Round result overlay. Pass 36: Alive counter HUD. Pass 37: Vitals HUD system. Pass 38: Damage direction indicator. Pass 39: Armor break indicator. Pass 40: Round pressure and reset audit. Pass 41: Round pressure and reset tuning. Pass 42: Last alive indicator. Pass 43: Kill feed weapon icons. Pass 44: Spectator system. Pass 45: Match-end and spectator UX bundle. Pass 46: Damage numbers system. Pass 47: Admin panel audit. Pass 48: VOIP and radio audit. Pass 49: Voice UX and radio config. Pass 50: Ranked MMR system. Pass 51: Leaderboard system. Pass 52: Profile / stats page system. Pass 53: Progression / XP system. Pass 54: Match history system. Pass 54A: Stress test audit. Pass 55: Daily/weekly challenges system. Pass 56: Free For All mode. Pass 57: Gun Game mode. Pass 58: Seasons system. Pass 59: Season-end ranked rewards system. Pass 60: Prestige system. Pass 61: Pre-v0 UX / integration audit. Pass 62: v0 UI polish preparation. Pass 63: UI structure expansion + mode flow corrections.*
+## 64. Loadout Attachments UI Integration
+
+### Goal
+
+Expose the existing weapon attachment system properly in the Loadout UI.
+
+### Rules
+
+- Do NOT invent a new attachment backend
+- Reuse existing weapon/attachment data and backend logic
+- Do NOT redesign combat formulas
+- Keep implementation simple
+- Build must pass
+
+### Implemented
+
+- **Audit:** Documented backend (WeaponAttachments.data, WeaponPresets.service, loadout events) and frontend (LoadoutPanel)
+- **Weapon selection:** Selecting a weapon opens details panel with name, category, preview, attachment slots
+- **Attachment slots:** Human-readable labels (Magazine, Optic, Muzzle, Grip, Barrel, Flashlight, Skin); only slots that exist for weapon
+- **Attachment options:** "None" + available options per slot; equipped clearly highlighted; setComponent wires to savePreset
+- **Layout:** Weapon grid left, weapon details + attachments center, stats + save right
+- **Preserved:** Weapons, Character; no Leaderboard, Inventory, Emotes
+- **Documentation:** LOADOUT_ATTACHMENTS_UI.md
+
+### Build Status
+
+`npm run build:all` — **PASSED**.
+
+---
+
+## 65. V0 UI Integration (Pass 67)
+
+### Goal
+
+Integrate the approved V0 UI design into the existing Rage Arena frontend without replacing backend logic or existing event/store architecture.
+
+### Rules
+
+- Do NOT redesign backend systems
+- Do NOT replace existing stores/events with mock state
+- Do NOT invent fake data
+- Do NOT change gameplay logic
+- Keep all existing functionality intact
+- Build must pass
+
+### Implemented
+
+- **Design tokens:** Added V0 vars ($v0-bg, $v0-panel, $v0-accent, etc.) to vars.scss
+- **Main menu shell:** Nav bar fixed top, V0 panel/accent colors, admin green
+- **Play page:** Queue card, mode tabs, size chips, buttons restyled
+- **Loadout:** Panel, tabs, weapon/attachment UI, save button restyled
+- **Ranking/Profile/Challenges/Season:** Tabs, leaderboard, challenges, season rewards, profile cards restyled
+- **Settings:** Wrapper, nav tabs, scrollbar, recover button restyled
+- **Admin:** Panel, inputs, buttons, quick cards restyled
+- **HUDs:** Arena HUD, lobby, voting, ready check — blue team accent, compass, item bar, victory text
+
+### Documentation
+
+- `V0_UI_INTEGRATION.md` — Pages integrated, files changed, visual-only vs wiring, deferred
+
+### Deferred
+
+- Custom tab (no backend for custom rooms)
+- V0 mode cards grid layout (existing QueueCard retained)
+
+### Build Status
+
+`npm run build:all` — **PASSED**.
+
+---
+
+*Pass 1: Skeleton. Pass 2: Hopouts containment. Pass 3: Generic match infrastructure. Pass 4: Player statistics. Pass 4.5: Death/damage/stats stabilization. Pass 12: Combat systems audit. Pass 13: Recoil validation. Pass 14: Combat fixes (per-weapon recoil). Pass 15: Combat polish. Pass 16: Party system architecture. Pass 17: Party queue integration. Pass 18: Party system hardening. Pass 19: Party UI audit. Pass 20: Party UI wiring. Pass 21: Party invite flow completion. Pass 22: Auth/character simplification. Pass 23: Hit registration + lag compensation audit. Pass 24: Lag compensation implementation (minimal). Pass 25: Match ready system. Pass 26: Match reconnect protection. Pass 27: Frontend UI architecture audit. Pass 28: Frontend refactor pass. Pass 29: Disconnected player round-state rules. Pass 30: Combat integrity pass. Pass 31: UI rebuild spec. Pass 32: Arena HUD rebuild. Pass 33: Scoreboard rebuild. Pass 34: Death recap system. Pass 35: Round result overlay. Pass 36: Alive counter HUD. Pass 37: Vitals HUD system. Pass 38: Damage direction indicator. Pass 39: Armor break indicator. Pass 40: Round pressure and reset audit. Pass 41: Round pressure and reset tuning. Pass 42: Last alive indicator. Pass 43: Kill feed weapon icons. Pass 44: Spectator system. Pass 45: Match-end and spectator UX bundle. Pass 46: Damage numbers system. Pass 47: Admin panel audit. Pass 48: VOIP and radio audit. Pass 49: Voice UX and radio config. Pass 50: Ranked MMR system. Pass 51: Leaderboard system. Pass 52: Profile / stats page system. Pass 53: Progression / XP system. Pass 54: Match history system. Pass 54A: Stress test audit. Pass 55: Daily/weekly challenges system. Pass 56: Free For All mode. Pass 57: Gun Game mode. Pass 58: Seasons system. Pass 59: Season-end ranked rewards system. Pass 60: Prestige system. Pass 61: Pre-v0 UX / integration audit. Pass 62: v0 UI polish preparation. Pass 63: UI structure expansion + mode flow corrections. Pass 64: Loadout attachments UI integration. Pass 67: V0 UI integration.*

@@ -51,7 +51,7 @@ RAGERP.cef.register("mainmenu", "openSettings", (player: PlayerMp) => {
 
 RAGERP.cef.register("mainmenu", "requestAdminLevel", (player: PlayerMp) => {
     const level = player?.account?.adminlevel ?? 0;
-    RAGERP.cef.emit(player, "mainmenu", "setAdminLevel", { adminLevel: level });
+    (RAGERP.cef.emit as Function)(player, "mainmenu", "setAdminLevel", { adminLevel: level });
 });
 
 RAGERP.cef.register("mainmenu", "requestPlayerList", (player: PlayerMp) => {

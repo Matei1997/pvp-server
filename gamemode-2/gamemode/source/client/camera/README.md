@@ -5,6 +5,6 @@
 **Belongs here (when migrated):**
 - Camera.class.ts
 - IdleCamera.module.ts
-- MainMenuScene.module.ts
+- MenuPreview.module.ts (main menu loadout/clothing preview ped + camera)
 - WardrobeCamera.module.ts
 - Creator.class.ts (character creator camera)

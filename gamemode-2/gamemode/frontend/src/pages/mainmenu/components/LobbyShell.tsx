@@ -88,7 +88,7 @@ export const LobbyShell: React.FC<LobbyShellProps> = observer(
         }, [activeNav]);
 
         return (
-            <div className={cn(style.lobby, activeNav === "clothing" ? style.sceneMode : style.menuMode)}>
+            <div className={cn(style.lobby, activeNav === "clothing" || activeNav === "loadout" ? style.sceneMode : style.menuMode)}>
                 <header className={style.navBar}>
                     <div className={style.logo}>
                         <span className={style.logoMain}>ARENA</span>
