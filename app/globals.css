@@ -1,0 +1,273 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Rage Arena - BLVCK HUD inspired dark tactical theme */
+:root {
+  /* Core background - #0a0f16 */
+  --background: #0a0f16;
+  --foreground: #e8eaed;
+  
+  /* Panel surfaces - #111922 */
+  --card: #111922;
+  --card-foreground: #e8eaed;
+  
+  /* Popover */
+  --popover: #111922;
+  --popover-foreground: #e8eaed;
+  
+  /* Primary - Cyan accent #00e0c6 */
+  --primary: #00e0c6;
+  --primary-foreground: #0a0f16;
+  
+  /* Secondary - Muted surface */
+  --secondary: #1a2332;
+  --secondary-foreground: #a8b2c1;
+  
+  /* Muted */
+  --muted: #161d28;
+  --muted-foreground: #6b7a8f;
+  
+  /* Accent - Admin green #2ecc71 */
+  --accent: #2ecc71;
+  --accent-foreground: #0a0f16;
+  
+  /* Destructive - Red */
+  --destructive: #e74c3c;
+  --destructive-foreground: #e8eaed;
+  
+  /* Borders and inputs */
+  --border: rgba(255, 255, 255, 0.05);
+  --input: #1a2332;
+  --ring: #00e0c6;
+  
+  /* Chart colors */
+  --chart-1: #00e0c6;
+  --chart-2: #2ecc71;
+  --chart-3: #3498db;
+  --chart-4: #e74c3c;
+  --chart-5: #f39c12;
+  
+  --radius: 6px;
+  
+  /* Sidebar */
+  --sidebar: #111922;
+  --sidebar-foreground: #e8eaed;
+  --sidebar-primary: #00e0c6;
+  --sidebar-primary-foreground: #0a0f16;
+  --sidebar-accent: #1a2332;
+  --sidebar-accent-foreground: #e8eaed;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #00e0c6;
+  
+  /* Custom Rage Arena tokens */
+  --cyan: #00e0c6;
+  --cyan-glow: rgba(0, 224, 198, 0.1);
+  --admin-green: #2ecc71;
+  --admin-green-glow: rgba(46, 204, 113, 0.1);
+  --purple: #9b59b6;
+  --purple-glow: rgba(155, 89, 182, 0.1);
+  --team-red: #e74c3c;
+  --team-blue: #3498db;
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --surface-1: #111922;
+  --surface-2: #1a2332;
+  --surface-3: #232d3f;
+  --glass: rgba(17, 25, 34, 0.9);
+}
+
+.dark {
+  /* Same as root - always dark theme */
+  --background: #0a0f16;
+  --foreground: #e8eaed;
+  --card: #111922;
+  --card-foreground: #e8eaed;
+  --popover: #111922;
+  --popover-foreground: #e8eaed;
+  --primary: #00e0c6;
+  --primary-foreground: #0a0f16;
+  --secondary: #1a2332;
+  --secondary-foreground: #a8b2c1;
+  --muted: #161d28;
+  --muted-foreground: #6b7a8f;
+  --accent: #2ecc71;
+  --accent-foreground: #0a0f16;
+  --destructive: #e74c3c;
+  --destructive-foreground: #e8eaed;
+  --border: rgba(255, 255, 255, 0.05);
+  --input: #1a2332;
+  --ring: #00e0c6;
+  --chart-1: #00e0c6;
+  --chart-2: #2ecc71;
+  --chart-3: #3498db;
+  --chart-4: #e74c3c;
+  --chart-5: #f39c12;
+  --sidebar: #111922;
+  --sidebar-foreground: #e8eaed;
+  --sidebar-primary: #00e0c6;
+  --sidebar-primary-foreground: #0a0f16;
+  --sidebar-accent: #1a2332;
+  --sidebar-accent-foreground: #e8eaed;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #00e0c6;
+}
+
+@theme inline {
+  --font-sans: 'Geist', 'Geist Fallback', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  
+  /* Custom Rage Arena colors */
+  --color-cyan: var(--cyan);
+  --color-cyan-glow: var(--cyan-glow);
+  --color-purple: var(--purple);
+  --color-purple-glow: var(--purple-glow);
+  --color-team-red: var(--team-red);
+  --color-team-blue: var(--team-blue);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-glass: var(--glass);
+  --color-admin-green: var(--admin-green);
+  --color-admin-green-glow: var(--admin-green-glow);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Rage Arena custom utilities */
+@layer utilities {
+  .glow-cyan {
+    box-shadow: 0 0 20px var(--cyan-glow), 0 0 40px var(--cyan-glow);
+  }
+  
+  .glow-purple {
+    box-shadow: 0 0 20px var(--purple-glow), 0 0 40px var(--purple-glow);
+  }
+  
+  .glow-admin-green {
+    box-shadow: 0 0 20px var(--admin-green-glow), 0 0 40px var(--admin-green-glow);
+  }
+  
+  .text-glow-cyan {
+    text-shadow: 0 0 10px var(--cyan-glow), 0 0 20px var(--cyan-glow);
+  }
+  
+  .text-glow-purple {
+    text-shadow: 0 0 10px var(--purple-glow), 0 0 20px var(--purple-glow);
+  }
+  
+  .text-glow-admin-green {
+    text-shadow: 0 0 10px var(--admin-green-glow), 0 0 20px var(--admin-green-glow);
+  }
+  
+  /* Standardized arena panel - BLVCK HUD style glass modules */
+  .arena-panel {
+    background: #111922;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+  }
+  
+  .arena-panel-hover:hover {
+    box-shadow: 0 0 18px rgba(0, 224, 198, 0.1);
+  }
+  
+  .glass-panel {
+    background: #111922;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+  }
+  
+  /* Tactical item card - for loadout/inventory items */
+  .tactical-card {
+    background: #111922;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    transition: all 0.15s ease;
+  }
+  
+  .tactical-card:hover {
+    box-shadow: 0 0 18px rgba(0, 224, 198, 0.1);
+  }
+  
+  .tactical-card.selected {
+    border-color: #00e0c6;
+    box-shadow: 0 0 18px rgba(0, 224, 198, 0.1);
+  }
+  
+  .tactical-card.equipped {
+    border-color: rgba(0, 224, 198, 0.5);
+    background: rgba(0, 224, 198, 0.05);
+  }
+  
+  /* Arena background - solid dark */
+  .arena-background {
+    background: #0a0f16;
+  }
+  
+  .tactical-grid {
+    background-image: 
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  
+  .hex-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%2322d3ee' fill-opacity='0.03'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  
+  .scanline {
+    background: linear-gradient(
+      transparent 50%,
+      rgba(0, 0, 0, 0.05) 50%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+  }
+}
